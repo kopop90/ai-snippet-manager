@@ -1,24 +1,31 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
+import React, { useState, useEffect, useMemo } from 'react';
+import { createClient } from '@supabase/supabase-js';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import {
   Code2,
   Link as LinkIcon,
-  Plus,
   Search,
-  Trash2,
+  Plus,
   Copy,
   Check,
-  Sparkles,
-  Tag,
   Pencil,
+  Trash2,
   X,
-  Save,
-  Filter,
+  Sparkles,
+  ChevronDown,
+  ChevronUp,
+  ExternalLink,
+  Loader2,
+  Terminal,
 } from 'lucide-react';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 interface Snippet {
   id: string;
@@ -34,33 +41,38 @@ interface Snippet {
 
 export default function Home() {
   const [snippets, setSnippets] = useState<Snippet[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Filter states
-  const [filterType, setFilterType] = useState<'all' | 'code' | 'link'>('all');
-  const [filterLang, setFilterLang] = useState<string>('all');
-
-  // Create Form states
+  // Form States
   const [title, setTitle] = useState('');
   const [type, setType] = useState<'code' | 'link'>('code');
   const [language, setLanguage] = useState('auto');
   const [content, setContent] = useState('');
-  const [statusText, setStatusText] = useState('');
 
-  // Edit Mode states
+  // Filter & Search States
+  const [searchQuery, setSearchQuery] = useState('');
+  const [typeFilter, setTypeFilter] = useState<'all' | 'code' | 'link'>('all');
+  const [langFilter, setLangFilter] = useState<string>('all');
+
+  // Card Interaction States
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editTitle, setEditTitle] = useState('');
-  const [editLanguage, setEditLanguage] = useState('');
-  const [editContent, setEditContent] = useState('');
-  const [editSummary, setEditSummary] = useState('');
-  const [editTags, setEditTags] = useState('');
-  const [isUpdating, setIsUpdating] = useState(false);
+  const [editForm, setEditForm] = useState({
+    title: '',
+    content: '',
+    language: '',
+    ai_summary: '',
+    tags: '',
+  });
 
-  // ดึงข้อมูลจาก Supabase
+  useEffect(() => {
+    fetchSnippets();
+  }, []);
+
   const fetchSnippets = async () => {
-    setLoading(true);
+    setIsLoading(true);
     const { data, error } = await supabase
       .from('snippets')
       .select('*')
@@ -69,286 +81,342 @@ export default function Home() {
     if (!error && data) {
       setSnippets(data);
     }
-    setLoading(false);
+    setIsLoading(false);
   };
 
-  useEffect(() => {
-    fetchSnippets();
-  }, []);
-
-  // ส่งให้ AI วิเคราะห์ก่อนบันทึกลง Supabase
-  const handleSave = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!content.trim()) return;
+    if (!content.trim() || isSubmitting) return;
 
-    setStatusText('AI กำลังวิเคราะห์ ตั้งชื่อ และตรวจจับภาษา...');
-
-    let finalTitle = title.trim();
-    let finalLanguage = type === 'link' ? 'url' : language === 'auto' ? 'plaintext' : language;
-    let aiSummary = null;
-    let aiModel = null;
-    let aiTags = [type];
-
+    setIsSubmitting(true);
     try {
-      const aiRes = await fetch('/api/analyze', {
+      const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: finalTitle, type, content, language }),
+        body: JSON.stringify({ title, type, content, language }),
       });
 
-      if (aiRes.ok) {
-        const aiData = await aiRes.json();
-        if (!finalTitle && aiData.suggestedTitle) {
-          finalTitle = aiData.suggestedTitle;
-        }
-        if (type === 'code' && language === 'auto' && aiData.detectedLanguage) {
-          finalLanguage = aiData.detectedLanguage;
-        }
-        aiSummary = aiData.summary;
-        aiModel = aiData.model;
-        if (aiData.tags && aiData.tags.length > 0) {
-          aiTags = aiData.tags;
-        }
-      }
-    } catch (err) {
-      console.error('AI fetch failed, saving with fallback values:', err);
-    }
+      const aiData = res.ok ? await res.json() : null;
 
-    if (!finalTitle) {
-      finalTitle = type === 'code' ? `Code Snippet (${finalLanguage})` : content.slice(0, 40);
-    }
+      const finalTitle =
+        title.trim() ||
+        aiData?.suggestedTitle ||
+        (type === 'link' ? 'Saved Bookmark' : 'Code Snippet');
 
-    setStatusText('กำลังบันทึกลงฐานข้อมูล...');
+      const finalLang =
+        language !== 'auto'
+          ? language
+          : aiData?.detectedLanguage || (type === 'link' ? 'url' : 'plaintext');
 
-    const { error } = await supabase.from('snippets').insert([
-      {
+      const newRecord = {
         title: finalTitle,
         type,
-        language: finalLanguage,
-        content,
-        ai_summary: aiSummary,
-        ai_model: aiModel,
-        tags: aiTags,
-      },
-    ]);
+        content: content.trim(),
+        language: finalLang.toLowerCase(),
+        ai_summary: aiData?.summary || null,
+        ai_model: aiData?.model || null,
+        tags: aiData?.tags?.length ? aiData.tags : [type],
+      };
 
-    if (!error) {
-      setTitle('');
-      setContent('');
-      fetchSnippets();
-    } else {
-      alert('เกิดข้อผิดพลาด: ' + error.message);
+      const { data, error } = await supabase
+        .from('snippets')
+        .insert([newRecord])
+        .select()
+        .single();
+
+      if (!error && data) {
+        setSnippets((prev) => [data, ...prev]);
+        setTitle('');
+        setContent('');
+        setLanguage('auto');
+      }
+    } catch (err) {
+      console.error('Submit error:', err);
+    } finally {
+      setIsSubmitting(false);
     }
-    setStatusText('');
   };
 
-  // เริ่มโหมดแก้ไข
-  const startEditing = (item: Snippet) => {
+  const handleDelete = async (id: string) => {
+    const previous = snippets;
+    setSnippets((prev) => prev.filter((item) => item.id !== id));
+    const { error } = await supabase.from('snippets').delete().eq('id', id);
+    if (error) setSnippets(previous);
+  };
+
+  const startEdit = (item: Snippet) => {
     setEditingId(item.id);
-    setEditTitle(item.title);
-    setEditLanguage(item.language);
-    setEditContent(item.content);
-    setEditSummary(item.ai_summary || '');
-    setEditTags(item.tags ? item.tags.join(', ') : '');
+    setEditForm({
+      title: item.title,
+      content: item.content,
+      language: item.language,
+      ai_summary: item.ai_summary || '',
+      tags: (item.tags || []).join(', '),
+    });
   };
 
-  // ยกเลิกการแก้ไข
-  const cancelEditing = () => {
-    setEditingId(null);
-  };
-
-  // บันทึกข้อมูลที่แก้ไขลง Supabase
-  const handleUpdate = async (id: string) => {
-    if (!editTitle.trim() || !editContent.trim()) return;
-    setIsUpdating(true);
-
-    const parsedTags = editTags
+  const saveEdit = async (id: string) => {
+    const updatedTags = editForm.tags
       .split(',')
-      .map((t) => t.trim().toLowerCase().replace(/^#/, ''))
+      .map((t) => t.trim().replace(/^#/, ''))
       .filter(Boolean);
 
-    const { error } = await supabase
-      .from('snippets')
-      .update({
-        title: editTitle.trim(),
-        language: editLanguage.trim().toLowerCase() || 'plaintext',
-        content: editContent,
-        ai_summary: editSummary.trim() || null,
-        tags: parsedTags,
-      })
-      .eq('id', id);
+    const updates = {
+      title: editForm.title.trim() || 'Untitled',
+      content: editForm.content.trim(),
+      language: editForm.language.trim().toLowerCase() || 'plaintext',
+      ai_summary: editForm.ai_summary.trim() || null,
+      tags: updatedTags,
+    };
 
+    const { error } = await supabase.from('snippets').update(updates).eq('id', id);
     if (!error) {
+      setSnippets((prev) =>
+        prev.map((item) => (item.id === id ? { ...item, ...updates } : item))
+      );
       setEditingId(null);
-      fetchSnippets();
-    } else {
-      alert('อัปเดตข้อมูลไม่สำเร็จ: ' + error.message);
-    }
-    setIsUpdating(false);
-  };
-
-  // ลบข้อมูล
-  const handleDelete = async (id: string) => {
-    const { error } = await supabase.from('snippets').delete().eq('id', id);
-    if (!error) {
-      setSnippets(snippets.filter((item) => item.id !== id));
     }
   };
 
-  // คัดลอกโค้ด/ลิงก์
   const handleCopy = (id: string, text: string) => {
     navigator.clipboard.writeText(text);
     setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
+    setTimeout(() => setCopiedId(null), 1800);
   };
 
-  // ดึงรายชื่อภาษาที่มีอยู่ทั้งหมด (ไม่ซ้ำกัน) เพื่อทำปุ่ม Filter
-  const availableLanguages = Array.from(
-    new Set(snippets.filter((s) => s.type === 'code').map((s) => s.language))
-  ).sort();
+  const toggleExpand = (id: string) => {
+    setExpandedIds((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
 
-  // กรองรายการตาม Type, Language และคำค้นหา
-  const filteredSnippets = snippets.filter((item) => {
-    if (filterType !== 'all' && item.type !== filterType) return false;
-    if (filterLang !== 'all' && item.language !== filterLang) return false;
-
-    const q = search.toLowerCase();
-    if (!q) return true;
-
-    return (
-      item.title.toLowerCase().includes(q) ||
-      item.content.toLowerCase().includes(q) ||
-      item.language.toLowerCase().includes(q) ||
-      (item.ai_summary && item.ai_summary.toLowerCase().includes(q)) ||
-      (item.tags && item.tags.some((tag) => tag.toLowerCase().includes(q)))
+  const availableLanguages = useMemo(() => {
+    const langs = new Set(
+      snippets
+        .filter((s) => s.type === 'code' && s.language && s.language !== 'url')
+        .map((s) => s.language.toLowerCase())
     );
-  });
+    return Array.from(langs).sort();
+  }, [snippets]);
+
+  const filteredSnippets = useMemo(() => {
+    return snippets.filter((item) => {
+      if (typeFilter !== 'all' && item.type !== typeFilter) return false;
+      if (langFilter !== 'all' && item.language.toLowerCase() !== langFilter)
+        return false;
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const inTitle = item.title.toLowerCase().includes(q);
+        const inContent = item.content.toLowerCase().includes(q);
+        const inSummary = item.ai_summary?.toLowerCase().includes(q);
+        const inTags = item.tags?.some((t) => t.toLowerCase().includes(q));
+        return inTitle || inContent || inSummary || inTags;
+      }
+      return true;
+    });
+  }, [snippets, typeFilter, langFilter, searchQuery]);
+
+  const formatDate = (dateStr: string) => {
+    const d = new Date(dateStr);
+    return d.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+    });
+  };
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100 p-6 md:p-12">
-      <div className="max-w-4xl mx-auto space-y-8">
+    <div className="min-h-screen bg-[#09090B] text-zinc-100 selection:bg-zinc-700 selection:text-white">
+      {/* Subtle Top Border Accent */}
+      <div className="h-[1px] w-full bg-gradient-to-r from-transparent via-zinc-700 to-transparent" />
+
+      <div className="mx-auto max-w-4xl px-4 py-10 sm:px-6 lg:px-8">
         {/* Header */}
-        <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-6">
-          <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent">
-              AI Snippet & Bookmark Manager
-            </h1>
-            <p className="text-slate-400 text-sm mt-1">
-              คลังเก็บโค้ดและลิงก์ส่วนตัว พร้อม AI ตั้งชื่อ ตรวจจับภาษา สรุป และติดแท็กอัตโนมัติ
-            </p>
+        <header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900 text-zinc-200 shadow-inner">
+              <Terminal className="h-4 w-4" />
+            </div>
+            <div>
+              <h1 className="text-lg font-semibold tracking-tight text-zinc-100">
+                Snippet Vault
+              </h1>
+              <p className="text-xs text-zinc-500">
+                Personal code & bookmark archive with Gemini auto-indexing
+              </p>
+            </div>
           </div>
-          <div className="relative w-full md:w-72">
-            <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+
+          {/* Search Input */}
+          <div className="relative w-full sm:w-72">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500" />
             <input
               type="text"
-              placeholder="ค้นหาชื่อ, ภาษา, โค้ด หรือ tag..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-800 rounded-lg pl-9 pr-4 py-2 text-sm focus:outline-none focus:border-indigo-500"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search title, code, or #tag..."
+              className="w-full rounded-lg border border-zinc-800 bg-zinc-900/60 py-1.5 pl-8 pr-7 text-xs text-zinc-200 placeholder-zinc-500 transition focus:border-zinc-600 focus:bg-zinc-900 focus:outline-none"
             />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
           </div>
         </header>
 
-        {/* Form เพิ่มข้อมูล */}
-        <form onSubmit={handleSave} className="bg-slate-900/60 border border-slate-800 rounded-xl p-5 space-y-4">
-          <div className="flex flex-wrap gap-3">
-            <input
-              type="text"
-              placeholder="หัวข้อ (ปล่อยว่างได้ เดี๋ยว AI ตั้งชื่อให้)"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="flex-1 min-w-[200px] bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-indigo-500"
-            />
-            <select
-              value={type}
-              onChange={(e) => setType(e.target.value as 'code' | 'link')}
-              className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500"
-            >
-              <option value="code">Code Snippet</option>
-              <option value="link">Web Bookmark</option>
-            </select>
-            {type === 'code' && (
-              <select
-                value={language}
-                onChange={(e) => setLanguage(e.target.value)}
-                className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500"
-              >
-                <option value="auto">✨ ให้ AI ตรวจจับภาษา</option>
-                <option value="typescript">TypeScript / JS</option>
-                <option value="python">Python</option>
-                <option value="sql">SQL</option>
-                <option value="bash">Bash / Terminal</option>
-                <option value="html">HTML / CSS</option>
-              </select>
+        {/* Composer Card */}
+        <section className="mb-8 rounded-xl border border-zinc-800/90 bg-[#111114] p-4 shadow-sm">
+          <form onSubmit={handleSubmit} className="space-y-3">
+            {/* Top Controls Row */}
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Segmented Type Switch */}
+              <div className="inline-flex rounded-lg border border-zinc-800 bg-zinc-950 p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setType('code')}
+                  className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition ${
+                    type === 'code'
+                      ? 'bg-zinc-800 text-zinc-100 shadow-sm'
+                      : 'text-zinc-500 hover:text-zinc-300'
+                  }`}
+                >
+                  <Code2 className="h-3.5 w-3.5" />
+                  Code
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setType('link')}
+                  className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition ${
+                    type === 'link'
+                      ? 'bg-zinc-800 text-zinc-100 shadow-sm'
+                      : 'text-zinc-500 hover:text-zinc-300'
+                  }`}
+                >
+                  <LinkIcon className="h-3.5 w-3.5" />
+                  Bookmark
+                </button>
+              </div>
+
+              {/* Optional Title */}
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Title (optional — AI will generate if empty)"
+                className="min-w-[200px] flex-1 rounded-lg border border-zinc-800/80 bg-zinc-950/60 px-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-600 transition focus:border-zinc-700 focus:bg-zinc-950 focus:outline-none"
+              />
+
+              {/* Language Selector (Only for Code) */}
+              {type === 'code' && (
+                <select
+                  value={language}
+                  onChange={(e) => setLanguage(e.target.value)}
+                  className="rounded-lg border border-zinc-800/80 bg-zinc-950/60 px-2.5 py-1.5 text-xs text-zinc-300 transition focus:border-zinc-700 focus:outline-none"
+                >
+                  <option value="auto">Auto-detect lang</option>
+                  <option value="typescript">TypeScript</option>
+                  <option value="javascript">JavaScript</option>
+                  <option value="python">Python</option>
+                  <option value="sql">SQL</option>
+                  <option value="bash">Bash</option>
+                  <option value="html">HTML</option>
+                  <option value="css">CSS</option>
+                  <option value="json">JSON</option>
+                </select>
+              )}
+            </div>
+
+            {/* Content Input */}
+            {type === 'code' ? (
+              <textarea
+                rows={5}
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                placeholder="Paste your code snippet here..."
+                className="w-full resize-y rounded-lg border border-zinc-800/80 bg-zinc-950/80 p-3 font-mono text-xs leading-relaxed text-zinc-200 placeholder-zinc-600 transition focus:border-zinc-700 focus:outline-none"
+              />
+            ) : (
+              <input
+                type="url"
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                placeholder="https://..."
+                className="w-full rounded-lg border border-zinc-800/80 bg-zinc-950/80 px-3 py-2.5 font-mono text-xs text-zinc-200 placeholder-zinc-600 transition focus:border-zinc-700 focus:outline-none"
+              />
             )}
-          </div>
 
-          <textarea
-            rows={4}
-            placeholder={type === 'code' ? 'วางโค้ดของคุณที่นี่...' : 'วาง URL เว็บไซต์ที่นี่ (https://...)'}
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-sm font-mono focus:outline-none focus:border-indigo-500"
-            required
-          />
+            {/* Footer Action */}
+            <div className="flex items-center justify-between pt-0.5">
+              <span className="flex items-center gap-1.5 text-[11px] text-zinc-500">
+                <Sparkles className="h-3 w-3 text-zinc-400" />
+                Auto-summarizes & tags on save
+              </span>
 
-          <div className="flex justify-end">
-            <button
-              type="submit"
-              disabled={statusText !== ''}
-              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-5 py-2 rounded-lg text-sm font-medium transition"
-            >
-              {statusText ? <Sparkles className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-              {statusText || 'บันทึกและให้ AI วิเคราะห์'}
-            </button>
-          </div>
-        </form>
+              <button
+                type="submit"
+                disabled={!content.trim() || isSubmitting}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-100 px-3.5 py-1.5 text-xs font-medium text-zinc-950 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Analyzing...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="h-3.5 w-3.5" />
+                    Save Entry
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
+        </section>
 
-        {/* แถบตัวกรองแยกตามประเภทและภาษา */}
-        <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900/40 border border-slate-800/80 rounded-xl p-3">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-slate-400 flex items-center gap-1 mr-1">
-              <Filter className="w-3.5 h-3.5" /> ประเภท:
-            </span>
+        {/* Filter Bar */}
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800/80 pb-3">
+          <div className="flex items-center gap-1.5">
             {(['all', 'code', 'link'] as const).map((t) => (
               <button
                 key={t}
                 onClick={() => {
-                  setFilterType(t);
-                  if (t === 'link') setFilterLang('all');
+                  setTypeFilter(t);
+                  if (t === 'link') setLangFilter('all');
                 }}
-                className={`text-xs px-3 py-1.5 rounded-lg font-medium transition ${
-                  filterType === t
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-slate-800/70 text-slate-300 hover:bg-slate-800'
+                className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${
+                  typeFilter === t
+                    ? 'bg-zinc-800 text-zinc-100'
+                    : 'text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300'
                 }`}
               >
-                {t === 'all' ? `ทั้งหมด (${snippets.length})` : t === 'code' ? 'Code' : 'Bookmark'}
+                {t === 'all' && `All (${snippets.length})`}
+                {t === 'code' && 'Snippets'}
+                {t === 'link' && 'Bookmarks'}
               </button>
             ))}
           </div>
 
-          {filterType !== 'link' && availableLanguages.length > 0 && (
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-xs text-slate-400 mr-1">ภาษา:</span>
+          {availableLanguages.length > 0 && typeFilter !== 'link' && (
+            <div className="flex flex-wrap items-center gap-1.5">
               <button
-                onClick={() => setFilterLang('all')}
-                className={`text-xs px-2.5 py-1 rounded-md transition ${
-                  filterLang === 'all'
-                    ? 'bg-cyan-600/30 text-cyan-300 border border-cyan-500/40'
-                    : 'bg-slate-800/50 text-slate-400 hover:text-slate-200'
+                onClick={() => setLangFilter('all')}
+                className={`rounded-md px-2 py-0.5 font-mono text-[11px] transition ${
+                  langFilter === 'all'
+                    ? 'bg-zinc-800 text-zinc-200'
+                    : 'text-zinc-500 hover:text-zinc-300'
                 }`}
               >
-                ทุกภาษา
+                all-langs
               </button>
               {availableLanguages.map((lang) => (
                 <button
                   key={lang}
-                  onClick={() => setFilterLang(lang)}
-                  className={`text-xs px-2.5 py-1 rounded-md transition ${
-                    filterLang === lang
-                      ? 'bg-cyan-600/30 text-cyan-300 border border-cyan-500/40'
-                      : 'bg-slate-800/50 text-slate-400 hover:text-slate-200'
+                  onClick={() => setLangFilter(lang)}
+                  className={`rounded-md px-2 py-0.5 font-mono text-[11px] transition ${
+                    langFilter === lang
+                      ? 'bg-zinc-800 text-zinc-200'
+                      : 'text-zinc-500 hover:text-zinc-300'
                   }`}
                 >
                   {lang}
@@ -358,197 +426,266 @@ export default function Home() {
           )}
         </div>
 
-        {/* รายการที่บันทึกไว้ */}
-        <section className="space-y-4">
-          {loading ? (
-            <p className="text-center text-slate-500 py-8">กำลังโหลดข้อมูลจากฐานข้อมูล...</p>
-          ) : filteredSnippets.length === 0 ? (
-            <p className="text-center text-slate-500 py-8">ไม่พบรายการที่ตรงกับเงื่อนไขการค้นหา</p>
-          ) : (
-            filteredSnippets.map((item) => (
-              <div key={item.id} className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-3">
-                {editingId === item.id ? (
-                  /* --- โหมดแก้ไขข้อมูล (Edit Mode) --- */
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                      <span className="text-xs font-medium text-indigo-400 flex items-center gap-1.5">
-                        <Pencil className="w-3.5 h-3.5" /> กำลังแก้ไขรายการ
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={cancelEditing}
-                          className="flex items-center gap-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-lg transition"
-                        >
-                          <X className="w-3.5 h-3.5" /> ยกเลิก
-                        </button>
-                        <button
-                          onClick={() => handleUpdate(item.id)}
-                          disabled={isUpdating}
-                          className="flex items-center gap-1 text-xs bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg font-medium transition"
-                        >
-                          <Save className="w-3.5 h-3.5" /> {isUpdating ? 'กำลังบันทึก...' : 'บันทึกการแก้ไข'}
-                        </button>
-                      </div>
-                    </div>
+        {/* Feed List */}
+        <main className="space-y-4">
+          {/* Optimistic Skeleton Loader while AI is analyzing */}
+          {isSubmitting && (
+            <div className="animate-pulse rounded-xl border border-zinc-800 bg-[#111114] p-5">
+              <div className="mb-3 flex items-center justify-between">
+                <div className="h-4 w-48 rounded bg-zinc-800" />
+                <div className="h-4 w-16 rounded bg-zinc-800" />
+              </div>
+              <div className="mb-4 h-10 w-full rounded bg-zinc-900" />
+              <div className="h-24 w-full rounded bg-zinc-950" />
+            </div>
+          )}
 
-                    <div className="flex flex-wrap gap-3">
-                      <input
-                        type="text"
-                        value={editTitle}
-                        onChange={(e) => setEditTitle(e.target.value)}
-                        placeholder="หัวข้อ"
-                        className="flex-1 min-w-[200px] bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500"
-                      />
-                      {item.type === 'code' && (
+          {isLoading ? (
+            <div className="py-16 text-center text-xs text-zinc-500">
+              Loading archive...
+            </div>
+          ) : filteredSnippets.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-zinc-800 py-14 text-center">
+              <p className="text-xs text-zinc-500">
+                No entries match your current filter.
+              </p>
+            </div>
+          ) : (
+            filteredSnippets.map((item) => {
+              const isEditing = editingId === item.id;
+              const lineCount = item.content.split('\n').length;
+              const isLongCode = item.type === 'code' && lineCount > 14;
+              const isExpanded = !!expandedIds[item.id];
+
+              return (
+                <article
+                  key={item.id}
+                  className="group rounded-xl border border-zinc-800/90 bg-[#111114] p-5 transition-colors hover:border-zinc-700/90"
+                >
+                  {isEditing ? (
+                    /* Inline Edit Form */
+                    <div className="space-y-3">
+                      <div className="flex flex-wrap gap-2">
                         <input
                           type="text"
-                          value={editLanguage}
-                          onChange={(e) => setEditLanguage(e.target.value)}
-                          placeholder="ภาษา เช่น typescript, python"
-                          className="w-40 bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500"
+                          value={editForm.title}
+                          onChange={(e) =>
+                            setEditForm({ ...editForm, title: e.target.value })
+                          }
+                          className="flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-xs text-zinc-100 focus:outline-none"
+                          placeholder="Title"
                         />
-                      )}
-                    </div>
+                        <input
+                          type="text"
+                          value={editForm.language}
+                          onChange={(e) =>
+                            setEditForm({ ...editForm, language: e.target.value })
+                          }
+                          className="w-32 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 font-mono text-xs text-zinc-100 focus:outline-none"
+                          placeholder="Language"
+                        />
+                      </div>
 
-                    <textarea
-                      rows={5}
-                      value={editContent}
-                      onChange={(e) => setEditContent(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-xs font-mono focus:outline-none focus:border-indigo-500"
-                    />
-
-                    <div>
-                      <label className="text-xs text-slate-400 block mb-1">คำอธิบายสรุป:</label>
                       <textarea
                         rows={2}
-                        value={editSummary}
-                        onChange={(e) => setEditSummary(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-xs focus:outline-none focus:border-indigo-500"
+                        value={editForm.ai_summary}
+                        onChange={(e) =>
+                          setEditForm({ ...editForm, ai_summary: e.target.value })
+                        }
+                        className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-xs text-zinc-300 focus:outline-none"
+                        placeholder="Summary"
                       />
-                    </div>
 
-                    <div>
-                      <label className="text-xs text-slate-400 block mb-1">Tags (คั่นด้วยเครื่องหมายจุลภาค , ):</label>
+                      <textarea
+                        rows={6}
+                        value={editForm.content}
+                        onChange={(e) =>
+                          setEditForm({ ...editForm, content: e.target.value })
+                        }
+                        className="w-full rounded-lg border border-zinc-700 bg-zinc-950 p-3 font-mono text-xs text-zinc-200 focus:outline-none"
+                      />
+
                       <input
                         type="text"
-                        value={editTags}
-                        onChange={(e) => setEditTags(e.target.value)}
-                        placeholder="เช่น react, hooks, api"
-                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-indigo-500"
+                        value={editForm.tags}
+                        onChange={(e) =>
+                          setEditForm({ ...editForm, tags: e.target.value })
+                        }
+                        className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 font-mono text-xs text-zinc-300 focus:outline-none"
+                        placeholder="Tags separated by comma (e.g. react, hooks, api)"
                       />
-                    </div>
-                  </div>
-                ) : (
-                  /* --- โหมดแสดงผลปกติ (View Mode) --- */
-                  <>
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex items-center gap-2.5 flex-wrap">
-                        {item.type === 'code' ? (
-                          <Code2 className="w-5 h-5 text-indigo-400 shrink-0" />
-                        ) : (
-                          <LinkIcon className="w-5 h-5 text-cyan-400 shrink-0" />
-                        )}
-                        <h2 className="font-semibold text-lg">{item.title}</h2>
-                        <span className="text-xs bg-slate-800 text-slate-300 px-2.5 py-0.5 rounded-full">
-                          {item.language}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1.5 shrink-0">
+
+                      <div className="flex justify-end gap-2 pt-1">
                         <button
-                          onClick={() => handleCopy(item.id, item.content)}
-                          className="p-1.5 text-slate-400 hover:text-white bg-slate-800/60 rounded-lg transition"
-                          title="คัดลอก"
+                          onClick={() => setEditingId(null)}
+                          className="rounded-lg border border-zinc-800 px-3 py-1 text-xs text-zinc-400 hover:bg-zinc-900"
                         >
-                          {copiedId === item.id ? (
-                            <Check className="w-4 h-4 text-emerald-400" />
+                          Cancel
+                        </button>
+                        <button
+                          onClick={() => saveEdit(item.id)}
+                          className="rounded-lg bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-950 hover:bg-white"
+                        >
+                          Save Changes
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    /* Standard Display View */
+                    <>
+                      {/* Card Header */}
+                      <div className="mb-3 flex items-start justify-between gap-4">
+                        <div className="flex flex-wrap items-center gap-2.5">
+                          {item.type === 'code' ? (
+                            <Code2 className="h-4 w-4 shrink-0 text-zinc-400" />
                           ) : (
-                            <Copy className="w-4 h-4" />
+                            <LinkIcon className="h-4 w-4 shrink-0 text-zinc-400" />
                           )}
-                        </button>
-                        <button
-                          onClick={() => startEditing(item)}
-                          className="p-1.5 text-slate-400 hover:text-amber-400 bg-slate-800/60 rounded-lg transition"
-                          title="แก้ไข"
-                        >
-                          <Pencil className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(item.id)}
-                          className="p-1.5 text-slate-400 hover:text-red-400 bg-slate-800/60 rounded-lg transition"
-                          title="ลบ"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* กล่องแสดงผลสรุปจาก AI พร้อมป้ายบอกชื่อโมเดล */}
-                    {item.ai_summary && (
-                      <div className="bg-indigo-950/40 border border-indigo-500/30 rounded-lg p-3 space-y-2 text-sm text-indigo-200">
-                        <div className="flex items-start gap-2.5">
-                          <Sparkles className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
-                          <p className="flex-1">{item.ai_summary}</p>
+                          <h2 className="text-sm font-medium text-zinc-100">
+                            {item.title}
+                          </h2>
+                          <span className="rounded border border-zinc-800 bg-zinc-900 px-1.5 py-0.5 font-mono text-[10px] text-zinc-400">
+                            {item.language}
+                          </span>
+                          <span className="text-[11px] text-zinc-600">
+                            {formatDate(item.created_at)}
+                          </span>
                         </div>
-                        {item.ai_model && (
-                          <div className="flex justify-end">
-                            <span className="text-[11px] font-mono text-indigo-300/80 bg-indigo-900/50 border border-indigo-500/20 px-2 py-0.5 rounded">
-                              สรุปโดย {item.ai_model}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    )}
 
-                    {/* แสดงโค้ดพร้อม Syntax Highlighting หรือแสดง URL */}
-                    {item.type === 'code' ? (
-                      <div className="rounded-lg overflow-hidden border border-slate-800/80 text-xs">
-                        <SyntaxHighlighter
-                          language={item.language === 'plaintext' ? 'text' : item.language}
-                          style={vscDarkPlus}
-                          showLineNumbers
-                          customStyle={{
-                            margin: 0,
-                            padding: '1rem',
-                            backgroundColor: '#020617', // slate-950
-                            fontSize: '0.8rem',
-                          }}
-                        >
-                          {item.content}
-                        </SyntaxHighlighter>
-                      </div>
-                    ) : (
-                      <a
-                        href={item.content}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="block text-sm text-cyan-400 hover:underline truncate"
-                      >
-                        {item.content}
-                      </a>
-                    )}
-
-                    {/* แสดง Tags ที่ AI สร้างให้ */}
-                    {item.tags && item.tags.length > 0 && (
-                      <div className="flex items-center gap-2 flex-wrap pt-1">
-                        <Tag className="w-3.5 h-3.5 text-slate-500" />
-                        {item.tags.map((tag, idx) => (
+                        {/* Subtle Hover Actions */}
+                        <div className="flex items-center gap-1 opacity-70 transition-opacity group-hover:opacity-100">
                           <button
-                            key={idx}
-                            onClick={() => setSearch(tag)}
-                            className="text-xs bg-slate-800/80 hover:bg-slate-700 text-cyan-300 px-2 py-0.5 rounded transition"
+                            onClick={() => handleCopy(item.id, item.content)}
+                            title="Copy"
+                            className="flex items-center gap-1 rounded-md border border-transparent px-2 py-1 text-[11px] text-zinc-400 transition hover:border-zinc-800 hover:bg-zinc-900 hover:text-zinc-200"
                           >
-                            #{tag}
+                            {copiedId === item.id ? (
+                              <>
+                                <Check className="h-3.5 w-3.5 text-emerald-400" />
+                                <span className="text-emerald-400">Copied</span>
+                              </>
+                            ) : (
+                              <Copy className="h-3.5 w-3.5" />
+                            )}
                           </button>
-                        ))}
+
+                          <button
+                            onClick={() => startEdit(item)}
+                            title="Edit"
+                            className="rounded-md p-1.5 text-zinc-400 transition hover:bg-zinc-900 hover:text-zinc-200"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+
+                          <button
+                            onClick={() => handleDelete(item.id)}
+                            title="Delete"
+                            className="rounded-md p-1.5 text-zinc-400 transition hover:bg-zinc-900 hover:text-red-400"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       </div>
-                    )}
-                  </>
-                )}
-              </div>
-            ))
+
+                      {/* Clean Left-Border AI Summary Callout */}
+                      {item.ai_summary && (
+                        <div className="mb-3.5 border-l-2 border-zinc-700 pl-3 py-0.5">
+                          <p className="text-xs leading-relaxed text-zinc-300">
+                            {item.ai_summary}
+                          </p>
+                          {item.ai_model && (
+                            <span className="mt-1 inline-block font-mono text-[10px] text-zinc-500">
+                              via {item.ai_model}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Code Block or Bookmark Link */}
+                      {item.type === 'code' ? (
+                        <div className="relative overflow-hidden rounded-lg border border-zinc-800/80 bg-[#0d0d10]">
+                          <div
+                            className={
+                              isLongCode && !isExpanded
+                                ? 'max-h-[260px] overflow-hidden'
+                                : ''
+                            }
+                          >
+                            <SyntaxHighlighter
+                              language={item.language}
+                              style={vscDarkPlus}
+                              showLineNumbers
+                              customStyle={{
+                                margin: 0,
+                                padding: '0.875rem 1rem',
+                                background: 'transparent',
+                                fontSize: '0.78rem',
+                                lineHeight: '1.55',
+                              }}
+                              lineNumberStyle={{
+                                minWidth: '2.25em',
+                                paddingRight: '1em',
+                                color: '#52525b',
+                                userSelect: 'none',
+                              }}
+                            >
+                              {item.content}
+                            </SyntaxHighlighter>
+                          </div>
+
+                          {isLongCode && (
+                            <button
+                              onClick={() => toggleExpand(item.id)}
+                              className="flex w-full items-center justify-center gap-1 border-t border-zinc-800/80 bg-zinc-900/60 py-1.5 text-[11px] text-zinc-400 transition hover:bg-zinc-900 hover:text-zinc-200"
+                            >
+                              {isExpanded ? (
+                                <>
+                                  <ChevronUp className="h-3.5 w-3.5" />
+                                  Collapse ({lineCount} lines)
+                                </>
+                              ) : (
+                                <>
+                                  <ChevronDown className="h-3.5 w-3.5" />
+                                  Show all {lineCount} lines
+                                </>
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <a
+                          href={item.content}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center justify-between rounded-lg border border-zinc-800/80 bg-zinc-950/70 px-3.5 py-2.5 font-mono text-xs text-zinc-300 transition hover:border-zinc-700 hover:text-white"
+                        >
+                          <span className="truncate">{item.content}</span>
+                          <ExternalLink className="ml-2 h-3.5 w-3.5 shrink-0 text-zinc-500" />
+                        </a>
+                      )}
+
+                      {/* Tags Footer */}
+                      {item.tags && item.tags.length > 0 && (
+                        <div className="mt-3.5 flex flex-wrap items-center gap-1.5">
+                          {item.tags.map((tag, idx) => (
+                            <button
+                              key={idx}
+                              onClick={() => setSearchQuery(tag)}
+                              className="rounded-md bg-zinc-900 px-2 py-0.5 font-mono text-[11px] text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200"
+                            >
+                              #{tag}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </article>
+              );
+            })
           )}
-        </section>
+        </main>
       </div>
-    </main>
+    </div>
   );
 }
