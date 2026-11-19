@@ -80,7 +80,7 @@ ${textToAnalyze}`;
         const msg = err instanceof Error ? err.message : String(err);
         console.warn(`❌ รอบที่ ${i + 1} (${modelName}) ไม่ผ่าน: ${msg}`);
         // หน่วงเวลา 1 วินาทีก่อนลองตัวถัดไป เผื่อเซิร์ฟเวอร์หายแน่น
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, 300));
       }
     }
 
