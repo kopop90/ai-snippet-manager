@@ -20,6 +20,9 @@ import {
   ExternalLink,
   Loader2,
   Terminal,
+  Layers,
+  Hash,
+  FolderCode,
 } from 'lucide-react';
 
 const supabase = createClient(
@@ -43,6 +46,7 @@ export default function Home() {
   const [snippets, setSnippets] = useState<Snippet[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isComposerOpen, setIsComposerOpen] = useState(true);
 
   // Form States
   const [title, setTitle] = useState('');
@@ -188,13 +192,39 @@ export default function Home() {
     setExpandedIds((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const availableLanguages = useMemo(() => {
-    const langs = new Set(
-      snippets
-        .filter((s) => s.type === 'code' && s.language && s.language !== 'url')
-        .map((s) => s.language.toLowerCase())
-    );
-    return Array.from(langs).sort();
+  // Stats & Sidebar Metadata
+  const codeCount = useMemo(
+    () => snippets.filter((s) => s.type === 'code').length,
+    [snippets]
+  );
+  const linkCount = useMemo(
+    () => snippets.filter((s) => s.type === 'link').length,
+    [snippets]
+  );
+
+  const languageStats = useMemo(() => {
+    const map: Record<string, number> = {};
+    snippets
+      .filter((s) => s.type === 'code' && s.language && s.language !== 'url')
+      .forEach((s) => {
+        const l = s.language.toLowerCase();
+        map[l] = (map[l] || 0) + 1;
+      });
+    return Object.entries(map).sort((a, b) => b[1] - a[1]);
+  }, [snippets]);
+
+  const popularTags = useMemo(() => {
+    const map: Record<string, number> = {};
+    snippets.forEach((s) => {
+      (s.tags || []).forEach((tag) => {
+        const clean = tag.toLowerCase();
+        map[clean] = (map[clean] || 0) + 1;
+      });
+    });
+    return Object.entries(map)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8)
+      .map(([tag]) => tag);
   }, [snippets]);
 
   const filteredSnippets = useMemo(() => {
@@ -224,35 +254,33 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-[#09090B] text-zinc-100 selection:bg-zinc-700 selection:text-white">
-      {/* Subtle Top Border Accent */}
-      <div className="h-[1px] w-full bg-gradient-to-r from-transparent via-zinc-700 to-transparent" />
-
-      <div className="mx-auto max-w-4xl px-4 py-10 sm:px-6 lg:px-8">
-        {/* Header */}
-        <header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900 text-zinc-200 shadow-inner">
+      {/* Sticky Top Navbar */}
+      <header className="sticky top-0 z-30 border-b border-zinc-800/80 bg-[#09090B]/85 backdrop-blur-md">
+        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
+          {/* Brand */}
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900 text-zinc-200">
               <Terminal className="h-4 w-4" />
             </div>
-            <div>
-              <h1 className="text-lg font-semibold tracking-tight text-zinc-100">
-                Snippet Vault
-              </h1>
-              <p className="text-xs text-zinc-500">
-                Personal code & bookmark archive with Gemini auto-indexing
-              </p>
+            <div className="flex items-baseline gap-2">
+              <span className="text-sm font-semibold tracking-tight text-zinc-100">
+                SnippetVault
+              </span>
+              <span className="hidden rounded bg-zinc-900 px-1.5 py-0.5 font-mono text-[10px] text-zinc-500 sm:inline-block">
+                v1.0
+              </span>
             </div>
           </div>
 
-          {/* Search Input */}
-          <div className="relative w-full sm:w-72">
+          {/* Center Search Bar */}
+          <div className="relative max-w-md flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search title, code, or #tag..."
-              className="w-full rounded-lg border border-zinc-800 bg-zinc-900/60 py-1.5 pl-8 pr-7 text-xs text-zinc-200 placeholder-zinc-500 transition focus:border-zinc-600 focus:bg-zinc-900 focus:outline-none"
+              placeholder="Search snippets, URLs, summaries, or #tags..."
+              className="w-full rounded-lg border border-zinc-800 bg-zinc-900/70 py-1.5 pl-8 pr-7 text-xs text-zinc-200 placeholder-zinc-500 transition focus:border-zinc-600 focus:bg-zinc-900 focus:outline-none"
             />
             {searchQuery && (
               <button
@@ -263,428 +291,578 @@ export default function Home() {
               </button>
             )}
           </div>
-        </header>
 
-        {/* Composer Card */}
-        <section className="mb-8 rounded-xl border border-zinc-800/90 bg-[#111114] p-4 shadow-sm">
-          <form onSubmit={handleSubmit} className="space-y-3">
-            {/* Top Controls Row */}
-            <div className="flex flex-wrap items-center gap-2">
-              {/* Segmented Type Switch */}
-              <div className="inline-flex rounded-lg border border-zinc-800 bg-zinc-950 p-0.5">
-                <button
-                  type="button"
-                  onClick={() => setType('code')}
-                  className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition ${
-                    type === 'code'
-                      ? 'bg-zinc-800 text-zinc-100 shadow-sm'
-                      : 'text-zinc-500 hover:text-zinc-300'
-                  }`}
-                >
-                  <Code2 className="h-3.5 w-3.5" />
-                  Code
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setType('link')}
-                  className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition ${
-                    type === 'link'
-                      ? 'bg-zinc-800 text-zinc-100 shadow-sm'
-                      : 'text-zinc-500 hover:text-zinc-300'
-                  }`}
-                >
-                  <LinkIcon className="h-3.5 w-3.5" />
-                  Bookmark
-                </button>
-              </div>
-
-              {/* Optional Title */}
-              <input
-                type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="Title (optional — AI will generate if empty)"
-                className="min-w-[200px] flex-1 rounded-lg border border-zinc-800/80 bg-zinc-950/60 px-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-600 transition focus:border-zinc-700 focus:bg-zinc-950 focus:outline-none"
-              />
-
-              {/* Language Selector (Only for Code) */}
-              {type === 'code' && (
-                <select
-                  value={language}
-                  onChange={(e) => setLanguage(e.target.value)}
-                  className="rounded-lg border border-zinc-800/80 bg-zinc-950/60 px-2.5 py-1.5 text-xs text-zinc-300 transition focus:border-zinc-700 focus:outline-none"
-                >
-                  <option value="auto">Auto-detect lang</option>
-                  <option value="typescript">TypeScript</option>
-                  <option value="javascript">JavaScript</option>
-                  <option value="python">Python</option>
-                  <option value="sql">SQL</option>
-                  <option value="bash">Bash</option>
-                  <option value="html">HTML</option>
-                  <option value="css">CSS</option>
-                  <option value="json">JSON</option>
-                </select>
-              )}
-            </div>
-
-            {/* Content Input */}
-            {type === 'code' ? (
-              <textarea
-                rows={5}
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                placeholder="Paste your code snippet here..."
-                className="w-full resize-y rounded-lg border border-zinc-800/80 bg-zinc-950/80 p-3 font-mono text-xs leading-relaxed text-zinc-200 placeholder-zinc-600 transition focus:border-zinc-700 focus:outline-none"
-              />
+          {/* Toggle Composer Button */}
+          <button
+            onClick={() => setIsComposerOpen((prev) => !prev)}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-xs font-medium text-zinc-200 transition hover:border-zinc-700 hover:bg-zinc-800"
+          >
+            {isComposerOpen ? (
+              <>
+                <X className="h-3.5 w-3.5 text-zinc-400" />
+                <span className="hidden sm:inline">Hide Editor</span>
+              </>
             ) : (
-              <input
-                type="url"
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                placeholder="https://..."
-                className="w-full rounded-lg border border-zinc-800/80 bg-zinc-950/80 px-3 py-2.5 font-mono text-xs text-zinc-200 placeholder-zinc-600 transition focus:border-zinc-700 focus:outline-none"
-              />
+              <>
+                <Plus className="h-3.5 w-3.5" />
+                <span>New Entry</span>
+              </>
             )}
+          </button>
+        </div>
+      </header>
 
-            {/* Footer Action */}
-            <div className="flex items-center justify-between pt-0.5">
-              <span className="flex items-center gap-1.5 text-[11px] text-zinc-500">
-                <Sparkles className="h-3 w-3 text-zinc-400" />
-                Auto-summarizes & tags on save
-              </span>
-
+      {/* Main 2-Column Workspace */}
+      <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-6 sm:px-6 lg:flex-row lg:items-start">
+        {/* Left Sidebar Navigation (Sticky on Desktop) */}
+        <aside className="w-full shrink-0 space-y-6 lg:sticky lg:top-20 lg:w-56">
+          {/* Library Section */}
+          <div>
+            <p className="mb-2 px-2.5 font-mono text-[10px] font-medium uppercase tracking-wider text-zinc-500">
+              Library
+            </p>
+            <nav className="flex gap-1 overflow-x-auto lg:flex-col">
               <button
-                type="submit"
-                disabled={!content.trim() || isSubmitting}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-100 px-3.5 py-1.5 text-xs font-medium text-zinc-950 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    Analyzing...
-                  </>
-                ) : (
-                  <>
-                    <Plus className="h-3.5 w-3.5" />
-                    Save Entry
-                  </>
-                )}
-              </button>
-            </div>
-          </form>
-        </section>
-
-        {/* Filter Bar */}
-        <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800/80 pb-3">
-          <div className="flex items-center gap-1.5">
-            {(['all', 'code', 'link'] as const).map((t) => (
-              <button
-                key={t}
                 onClick={() => {
-                  setTypeFilter(t);
-                  if (t === 'link') setLangFilter('all');
+                  setTypeFilter('all');
+                  setLangFilter('all');
                 }}
-                className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${
-                  typeFilter === t
-                    ? 'bg-zinc-800 text-zinc-100'
-                    : 'text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300'
+                className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
+                  typeFilter === 'all' && langFilter === 'all'
+                    ? 'bg-zinc-800/90 text-zinc-100'
+                    : 'text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200'
                 }`}
               >
-                {t === 'all' && `All (${snippets.length})`}
-                {t === 'code' && 'Snippets'}
-                {t === 'link' && 'Bookmarks'}
+                <span className="flex items-center gap-2">
+                  <Layers className="h-3.5 w-3.5 text-zinc-400" />
+                  All Entries
+                </span>
+                <span className="font-mono text-[11px] text-zinc-500">
+                  {snippets.length}
+                </span>
               </button>
-            ))}
+
+              <button
+                onClick={() => {
+                  setTypeFilter('code');
+                  setLangFilter('all');
+                }}
+                className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
+                  typeFilter === 'code' && langFilter === 'all'
+                    ? 'bg-zinc-800/90 text-zinc-100'
+                    : 'text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200'
+                }`}
+              >
+                <span className="flex items-center gap-2">
+                  <Code2 className="h-3.5 w-3.5 text-zinc-400" />
+                  Snippets
+                </span>
+                <span className="font-mono text-[11px] text-zinc-500">
+                  {codeCount}
+                </span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setTypeFilter('link');
+                  setLangFilter('all');
+                }}
+                className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
+                  typeFilter === 'link'
+                    ? 'bg-zinc-800/90 text-zinc-100'
+                    : 'text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200'
+                }`}
+              >
+                <span className="flex items-center gap-2">
+                  <LinkIcon className="h-3.5 w-3.5 text-zinc-400" />
+                  Bookmarks
+                </span>
+                <span className="font-mono text-[11px] text-zinc-500">
+                  {linkCount}
+                </span>
+              </button>
+            </nav>
           </div>
 
-          {availableLanguages.length > 0 && typeFilter !== 'link' && (
-            <div className="flex flex-wrap items-center gap-1.5">
-              <button
-                onClick={() => setLangFilter('all')}
-                className={`rounded-md px-2 py-0.5 font-mono text-[11px] transition ${
-                  langFilter === 'all'
-                    ? 'bg-zinc-800 text-zinc-200'
-                    : 'text-zinc-500 hover:text-zinc-300'
-                }`}
-              >
-                all-langs
-              </button>
-              {availableLanguages.map((lang) => (
-                <button
-                  key={lang}
-                  onClick={() => setLangFilter(lang)}
-                  className={`rounded-md px-2 py-0.5 font-mono text-[11px] transition ${
-                    langFilter === lang
-                      ? 'bg-zinc-800 text-zinc-200'
-                      : 'text-zinc-500 hover:text-zinc-300'
-                  }`}
-                >
-                  {lang}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Feed List */}
-        <main className="space-y-4">
-          {/* Optimistic Skeleton Loader while AI is analyzing */}
-          {isSubmitting && (
-            <div className="animate-pulse rounded-xl border border-zinc-800 bg-[#111114] p-5">
-              <div className="mb-3 flex items-center justify-between">
-                <div className="h-4 w-48 rounded bg-zinc-800" />
-                <div className="h-4 w-16 rounded bg-zinc-800" />
-              </div>
-              <div className="mb-4 h-10 w-full rounded bg-zinc-900" />
-              <div className="h-24 w-full rounded bg-zinc-950" />
-            </div>
-          )}
-
-          {isLoading ? (
-            <div className="py-16 text-center text-xs text-zinc-500">
-              Loading archive...
-            </div>
-          ) : filteredSnippets.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-zinc-800 py-14 text-center">
-              <p className="text-xs text-zinc-500">
-                No entries match your current filter.
+          {/* Languages Section */}
+          {languageStats.length > 0 && (
+            <div>
+              <p className="mb-2 px-2.5 font-mono text-[10px] font-medium uppercase tracking-wider text-zinc-500">
+                Languages
               </p>
+              <div className="flex flex-wrap gap-1 lg:flex-col">
+                {languageStats.map(([lang, count]) => (
+                  <button
+                    key={lang}
+                    onClick={() => {
+                      setTypeFilter('code');
+                      setLangFilter(langFilter === lang ? 'all' : lang);
+                    }}
+                    className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs transition ${
+                      langFilter === lang
+                        ? 'bg-zinc-800/90 font-medium text-zinc-100'
+                        : 'text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2 font-mono text-[11px]">
+                      <FolderCode className="h-3.5 w-3.5 text-zinc-500" />
+                      {lang}
+                    </span>
+                    <span className="font-mono text-[11px] text-zinc-500">
+                      {count}
+                    </span>
+                  </button>
+                ))}
+              </div>
             </div>
-          ) : (
-            filteredSnippets.map((item) => {
-              const isEditing = editingId === item.id;
-              const lineCount = item.content.split('\n').length;
-              const isLongCode = item.type === 'code' && lineCount > 14;
-              const isExpanded = !!expandedIds[item.id];
+          )}
 
-              return (
-                <article
-                  key={item.id}
-                  className="group rounded-xl border border-zinc-800/90 bg-[#111114] p-5 transition-colors hover:border-zinc-700/90"
-                >
-                  {isEditing ? (
-                    /* Inline Edit Form */
-                    <div className="space-y-3">
-                      <div className="flex flex-wrap gap-2">
-                        <input
-                          type="text"
-                          value={editForm.title}
-                          onChange={(e) =>
-                            setEditForm({ ...editForm, title: e.target.value })
-                          }
-                          className="flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-xs text-zinc-100 focus:outline-none"
-                          placeholder="Title"
-                        />
-                        <input
-                          type="text"
-                          value={editForm.language}
-                          onChange={(e) =>
-                            setEditForm({ ...editForm, language: e.target.value })
-                          }
-                          className="w-32 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 font-mono text-xs text-zinc-100 focus:outline-none"
-                          placeholder="Language"
-                        />
-                      </div>
+          {/* Popular Tags Section */}
+          {popularTags.length > 0 && (
+            <div className="hidden lg:block">
+              <p className="mb-2 px-2.5 font-mono text-[10px] font-medium uppercase tracking-wider text-zinc-500">
+                Quick Tags
+              </p>
+              <div className="flex flex-wrap gap-1.5 px-2">
+                {popularTags.map((tag) => (
+                  <button
+                    key={tag}
+                    onClick={() =>
+                      setSearchQuery(searchQuery === tag ? '' : tag)
+                    }
+                    className={`inline-flex items-center gap-0.5 rounded-md border px-2 py-0.5 font-mono text-[11px] transition ${
+                      searchQuery === tag
+                        ? 'border-zinc-600 bg-zinc-800 text-zinc-100'
+                        : 'border-zinc-800/80 bg-zinc-900/50 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
+                    }`}
+                  >
+                    <Hash className="h-2.5 w-2.5 text-zinc-500" />
+                    {tag}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </aside>
 
-                      <textarea
-                        rows={2}
-                        value={editForm.ai_summary}
-                        onChange={(e) =>
-                          setEditForm({ ...editForm, ai_summary: e.target.value })
-                        }
-                        className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-xs text-zinc-300 focus:outline-none"
-                        placeholder="Summary"
-                      />
+        {/* Right Main Content Area */}
+        <div className="min-w-0 flex-1 space-y-6">
+          {/* Collapsible Composer Panel */}
+          {isComposerOpen && (
+            <section className="rounded-xl border border-zinc-800/90 bg-[#111114] p-4 shadow-sm">
+              <form onSubmit={handleSubmit} className="space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* Type Switcher */}
+                  <div className="inline-flex rounded-lg border border-zinc-800 bg-zinc-950 p-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setType('code')}
+                      className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition ${
+                        type === 'code'
+                          ? 'bg-zinc-800 text-zinc-100'
+                          : 'text-zinc-500 hover:text-zinc-300'
+                      }`}
+                    >
+                      <Code2 className="h-3.5 w-3.5" />
+                      Code
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setType('link')}
+                      className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition ${
+                        type === 'link'
+                          ? 'bg-zinc-800 text-zinc-100'
+                          : 'text-zinc-500 hover:text-zinc-300'
+                      }`}
+                    >
+                      <LinkIcon className="h-3.5 w-3.5" />
+                      Bookmark
+                    </button>
+                  </div>
 
-                      <textarea
-                        rows={6}
-                        value={editForm.content}
-                        onChange={(e) =>
-                          setEditForm({ ...editForm, content: e.target.value })
-                        }
-                        className="w-full rounded-lg border border-zinc-700 bg-zinc-950 p-3 font-mono text-xs text-zinc-200 focus:outline-none"
-                      />
+                  {/* Title Input */}
+                  <input
+                    type="text"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="Entry title (leave blank for AI auto-title)"
+                    className="min-w-[200px] flex-1 rounded-lg border border-zinc-800/80 bg-zinc-950/70 px-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-600 transition focus:border-zinc-700 focus:outline-none"
+                  />
 
-                      <input
-                        type="text"
-                        value={editForm.tags}
-                        onChange={(e) =>
-                          setEditForm({ ...editForm, tags: e.target.value })
-                        }
-                        className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 font-mono text-xs text-zinc-300 focus:outline-none"
-                        placeholder="Tags separated by comma (e.g. react, hooks, api)"
-                      />
+                  {/* Language Select */}
+                  {type === 'code' && (
+                    <select
+                      value={language}
+                      onChange={(e) => setLanguage(e.target.value)}
+                      className="rounded-lg border border-zinc-800/80 bg-zinc-950/70 px-2.5 py-1.5 text-xs text-zinc-300 transition focus:border-zinc-700 focus:outline-none"
+                    >
+                      <option value="auto">Auto-detect lang</option>
+                      <option value="typescript">TypeScript</option>
+                      <option value="javascript">JavaScript</option>
+                      <option value="python">Python</option>
+                      <option value="sql">SQL</option>
+                      <option value="bash">Bash</option>
+                      <option value="html">HTML</option>
+                      <option value="css">CSS</option>
+                      <option value="json">JSON</option>
+                    </select>
+                  )}
+                </div>
 
-                      <div className="flex justify-end gap-2 pt-1">
-                        <button
-                          onClick={() => setEditingId(null)}
-                          className="rounded-lg border border-zinc-800 px-3 py-1 text-xs text-zinc-400 hover:bg-zinc-900"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          onClick={() => saveEdit(item.id)}
-                          className="rounded-lg bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-950 hover:bg-white"
-                        >
-                          Save Changes
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    /* Standard Display View */
-                    <>
-                      {/* Card Header */}
-                      <div className="mb-3 flex items-start justify-between gap-4">
-                        <div className="flex flex-wrap items-center gap-2.5">
-                          {item.type === 'code' ? (
-                            <Code2 className="h-4 w-4 shrink-0 text-zinc-400" />
-                          ) : (
-                            <LinkIcon className="h-4 w-4 shrink-0 text-zinc-400" />
-                          )}
-                          <h2 className="text-sm font-medium text-zinc-100">
-                            {item.title}
-                          </h2>
-                          <span className="rounded border border-zinc-800 bg-zinc-900 px-1.5 py-0.5 font-mono text-[10px] text-zinc-400">
-                            {item.language}
-                          </span>
-                          <span className="text-[11px] text-zinc-600">
-                            {formatDate(item.created_at)}
-                          </span>
-                        </div>
+                {/* Content Input */}
+                {type === 'code' ? (
+                  <textarea
+                    rows={4}
+                    value={content}
+                    onChange={(e) => setContent(e.target.value)}
+                    placeholder="Paste code snippet here..."
+                    className="w-full resize-y rounded-lg border border-zinc-800/80 bg-zinc-950/90 p-3 font-mono text-xs leading-relaxed text-zinc-200 placeholder-zinc-600 transition focus:border-zinc-700 focus:outline-none"
+                  />
+                ) : (
+                  <input
+                    type="url"
+                    value={content}
+                    onChange={(e) => setContent(e.target.value)}
+                    placeholder="https://..."
+                    className="w-full rounded-lg border border-zinc-800/80 bg-zinc-950/90 px-3 py-2.5 font-mono text-xs text-zinc-200 placeholder-zinc-600 transition focus:border-zinc-700 focus:outline-none"
+                  />
+                )}
 
-                        {/* Subtle Hover Actions */}
-                        <div className="flex items-center gap-1 opacity-70 transition-opacity group-hover:opacity-100">
-                          <button
-                            onClick={() => handleCopy(item.id, item.content)}
-                            title="Copy"
-                            className="flex items-center gap-1 rounded-md border border-transparent px-2 py-1 text-[11px] text-zinc-400 transition hover:border-zinc-800 hover:bg-zinc-900 hover:text-zinc-200"
-                          >
-                            {copiedId === item.id ? (
-                              <>
-                                <Check className="h-3.5 w-3.5 text-emerald-400" />
-                                <span className="text-emerald-400">Copied</span>
-                              </>
-                            ) : (
-                              <Copy className="h-3.5 w-3.5" />
-                            )}
-                          </button>
+                <div className="flex items-center justify-between pt-0.5">
+                  <span className="flex items-center gap-1.5 text-[11px] text-zinc-500">
+                    <Sparkles className="h-3 w-3 text-zinc-400" />
+                    AI generates Thai summary, title & tags automatically
+                  </span>
 
-                          <button
-                            onClick={() => startEdit(item)}
-                            title="Edit"
-                            className="rounded-md p-1.5 text-zinc-400 transition hover:bg-zinc-900 hover:text-zinc-200"
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </button>
+                  <button
+                    type="submit"
+                    disabled={!content.trim() || isSubmitting}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-100 px-3.5 py-1.5 text-xs font-medium text-zinc-950 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        Analyzing...
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="h-3.5 w-3.5" />
+                        Save to Vault
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </section>
+          )}
 
-                          <button
-                            onClick={() => handleDelete(item.id)}
-                            title="Delete"
-                            className="rounded-md p-1.5 text-zinc-400 transition hover:bg-zinc-900 hover:text-red-400"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      </div>
+          {/* Active Filter Status Header */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-xs text-zinc-400">
+              <span className="font-medium text-zinc-200">
+                {typeFilter === 'all'
+                  ? 'All Entries'
+                  : typeFilter === 'code'
+                  ? 'Code Snippets'
+                  : 'Web Bookmarks'}
+              </span>
+              {langFilter !== 'all' && (
+                <span className="rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-[11px] text-zinc-200">
+                  {langFilter}
+                </span>
+              )}
+              {searchQuery && (
+                <span className="rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-[11px] text-zinc-200">
+                  &ldquo;{searchQuery}&rdquo;
+                </span>
+              )}
+              <span className="text-zinc-600">
+                ({filteredSnippets.length})
+              </span>
+            </div>
 
-                      {/* Clean Left-Border AI Summary Callout */}
-                      {item.ai_summary && (
-                        <div className="mb-3.5 border-l-2 border-zinc-700 pl-3 py-0.5">
-                          <p className="text-xs leading-relaxed text-zinc-300">
-                            {item.ai_summary}
-                          </p>
-                          {item.ai_model && (
-                            <span className="mt-1 inline-block font-mono text-[10px] text-zinc-500">
-                              via {item.ai_model}
-                            </span>
-                          )}
-                        </div>
-                      )}
+            {(typeFilter !== 'all' || langFilter !== 'all' || searchQuery) && (
+              <button
+                onClick={() => {
+                  setTypeFilter('all');
+                  setLangFilter('all');
+                  setSearchQuery('');
+                }}
+                className="text-[11px] text-zinc-500 hover:text-zinc-300"
+              >
+                Reset filters
+              </button>
+            )}
+          </div>
 
-                      {/* Code Block or Bookmark Link */}
-                      {item.type === 'code' ? (
-                        <div className="relative overflow-hidden rounded-lg border border-zinc-800/80 bg-[#0d0d10]">
-                          <div
-                            className={
-                              isLongCode && !isExpanded
-                                ? 'max-h-[260px] overflow-hidden'
-                                : ''
+          {/* Cards Stream */}
+          <main className="space-y-4">
+            {isSubmitting && (
+              <div className="animate-pulse rounded-xl border border-zinc-800 bg-[#111114] p-5">
+                <div className="mb-3 flex items-center justify-between">
+                  <div className="h-4 w-48 rounded bg-zinc-800" />
+                  <div className="h-4 w-16 rounded bg-zinc-800" />
+                </div>
+                <div className="mb-4 h-10 w-full rounded bg-zinc-900" />
+                <div className="h-24 w-full rounded bg-zinc-950" />
+              </div>
+            )}
+
+            {isLoading ? (
+              <div className="py-16 text-center text-xs text-zinc-500">
+                Loading vault...
+              </div>
+            ) : filteredSnippets.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-zinc-800 py-14 text-center">
+                <p className="text-xs text-zinc-500">
+                  No entries found matching your criteria.
+                </p>
+              </div>
+            ) : (
+              filteredSnippets.map((item) => {
+                const isEditing = editingId === item.id;
+                const lineCount = item.content.split('\n').length;
+                const isLongCode = item.type === 'code' && lineCount > 14;
+                const isExpanded = !!expandedIds[item.id];
+
+                return (
+                  <article
+                    key={item.id}
+                    className="group rounded-xl border border-zinc-800/90 bg-[#111114] p-5 transition-colors hover:border-zinc-700/90"
+                  >
+                    {isEditing ? (
+                      <div className="space-y-3">
+                        <div className="flex flex-wrap gap-2">
+                          <input
+                            type="text"
+                            value={editForm.title}
+                            onChange={(e) =>
+                              setEditForm({ ...editForm, title: e.target.value })
                             }
+                            className="flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-xs text-zinc-100 focus:outline-none"
+                            placeholder="Title"
+                          />
+                          <input
+                            type="text"
+                            value={editForm.language}
+                            onChange={(e) =>
+                              setEditForm({
+                                ...editForm,
+                                language: e.target.value,
+                              })
+                            }
+                            className="w-32 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 font-mono text-xs text-zinc-100 focus:outline-none"
+                            placeholder="Language"
+                          />
+                        </div>
+
+                        <textarea
+                          rows={2}
+                          value={editForm.ai_summary}
+                          onChange={(e) =>
+                            setEditForm({
+                              ...editForm,
+                              ai_summary: e.target.value,
+                            })
+                          }
+                          className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-xs text-zinc-300 focus:outline-none"
+                          placeholder="Summary"
+                        />
+
+                        <textarea
+                          rows={6}
+                          value={editForm.content}
+                          onChange={(e) =>
+                            setEditForm({
+                              ...editForm,
+                              content: e.target.value,
+                            })
+                          }
+                          className="w-full rounded-lg border border-zinc-700 bg-zinc-950 p-3 font-mono text-xs text-zinc-200 focus:outline-none"
+                        />
+
+                        <input
+                          type="text"
+                          value={editForm.tags}
+                          onChange={(e) =>
+                            setEditForm({ ...editForm, tags: e.target.value })
+                          }
+                          className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 font-mono text-xs text-zinc-300 focus:outline-none"
+                          placeholder="Tags separated by comma"
+                        />
+
+                        <div className="flex justify-end gap-2 pt-1">
+                          <button
+                            onClick={() => setEditingId(null)}
+                            className="rounded-lg border border-zinc-800 px-3 py-1 text-xs text-zinc-400 hover:bg-zinc-900"
                           >
-                            <SyntaxHighlighter
-                              language={item.language}
-                              style={vscDarkPlus}
-                              showLineNumbers
-                              customStyle={{
-                                margin: 0,
-                                padding: '0.875rem 1rem',
-                                background: 'transparent',
-                                fontSize: '0.78rem',
-                                lineHeight: '1.55',
-                              }}
-                              lineNumberStyle={{
-                                minWidth: '2.25em',
-                                paddingRight: '1em',
-                                color: '#52525b',
-                                userSelect: 'none',
-                              }}
-                            >
-                              {item.content}
-                            </SyntaxHighlighter>
+                            Cancel
+                          </button>
+                          <button
+                            onClick={() => saveEdit(item.id)}
+                            className="rounded-lg bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-950 hover:bg-white"
+                          >
+                            Save Changes
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        {/* Card Top Bar */}
+                        <div className="mb-3 flex items-start justify-between gap-4">
+                          <div className="flex flex-wrap items-center gap-2">
+                            {item.type === 'code' ? (
+                              <Code2 className="h-4 w-4 shrink-0 text-zinc-400" />
+                            ) : (
+                              <LinkIcon className="h-4 w-4 shrink-0 text-zinc-400" />
+                            )}
+                            <h2 className="text-sm font-medium text-zinc-100">
+                              {item.title}
+                            </h2>
+                            <span className="rounded border border-zinc-800 bg-zinc-900 px-1.5 py-0.5 font-mono text-[10px] text-zinc-400">
+                              {item.language}
+                            </span>
+                            <span className="text-[11px] text-zinc-600">
+                              {formatDate(item.created_at)}
+                            </span>
                           </div>
 
-                          {isLongCode && (
+                          {/* Card Actions */}
+                          <div className="flex items-center gap-1 opacity-75 transition-opacity group-hover:opacity-100">
                             <button
-                              onClick={() => toggleExpand(item.id)}
-                              className="flex w-full items-center justify-center gap-1 border-t border-zinc-800/80 bg-zinc-900/60 py-1.5 text-[11px] text-zinc-400 transition hover:bg-zinc-900 hover:text-zinc-200"
+                              onClick={() => handleCopy(item.id, item.content)}
+                              title="Copy"
+                              className="flex items-center gap-1 rounded-md border border-transparent px-2 py-1 text-[11px] text-zinc-400 transition hover:border-zinc-800 hover:bg-zinc-900 hover:text-zinc-200"
                             >
-                              {isExpanded ? (
+                              {copiedId === item.id ? (
                                 <>
-                                  <ChevronUp className="h-3.5 w-3.5" />
-                                  Collapse ({lineCount} lines)
+                                  <Check className="h-3.5 w-3.5 text-emerald-400" />
+                                  <span className="text-emerald-400">
+                                    Copied
+                                  </span>
                                 </>
                               ) : (
-                                <>
-                                  <ChevronDown className="h-3.5 w-3.5" />
-                                  Show all {lineCount} lines
-                                </>
+                                <Copy className="h-3.5 w-3.5" />
                               )}
                             </button>
-                          )}
-                        </div>
-                      ) : (
-                        <a
-                          href={item.content}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center justify-between rounded-lg border border-zinc-800/80 bg-zinc-950/70 px-3.5 py-2.5 font-mono text-xs text-zinc-300 transition hover:border-zinc-700 hover:text-white"
-                        >
-                          <span className="truncate">{item.content}</span>
-                          <ExternalLink className="ml-2 h-3.5 w-3.5 shrink-0 text-zinc-500" />
-                        </a>
-                      )}
 
-                      {/* Tags Footer */}
-                      {item.tags && item.tags.length > 0 && (
-                        <div className="mt-3.5 flex flex-wrap items-center gap-1.5">
-                          {item.tags.map((tag, idx) => (
                             <button
-                              key={idx}
-                              onClick={() => setSearchQuery(tag)}
-                              className="rounded-md bg-zinc-900 px-2 py-0.5 font-mono text-[11px] text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200"
+                              onClick={() => startEdit(item)}
+                              title="Edit"
+                              className="rounded-md p-1.5 text-zinc-400 transition hover:bg-zinc-900 hover:text-zinc-200"
                             >
-                              #{tag}
+                              <Pencil className="h-3.5 w-3.5" />
                             </button>
-                          ))}
+
+                            <button
+                              onClick={() => handleDelete(item.id)}
+                              title="Delete"
+                              className="rounded-md p-1.5 text-zinc-400 transition hover:bg-zinc-900 hover:text-red-400"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
                         </div>
-                      )}
-                    </>
-                  )}
-                </article>
-              );
-            })
-          )}
-        </main>
+
+                        {/* AI Summary Callout */}
+                        {item.ai_summary && (
+                          <div className="mb-3.5 flex flex-col justify-between gap-1 border-l-2 border-zinc-700 pl-3 py-0.5 sm:flex-row sm:items-end">
+                            <p className="text-xs leading-relaxed text-zinc-300">
+                              {item.ai_summary}
+                            </p>
+                            {item.ai_model && (
+                              <span className="shrink-0 font-mono text-[10px] text-zinc-500">
+                                {item.ai_model}
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Code Block or Link */}
+                        {item.type === 'code' ? (
+                          <div className="relative overflow-hidden rounded-lg border border-zinc-800/80 bg-[#0d0d10]">
+                            <div
+                              className={
+                                isLongCode && !isExpanded
+                                  ? 'max-h-[250px] overflow-hidden'
+                                  : ''
+                              }
+                            >
+                              <SyntaxHighlighter
+                                language={item.language}
+                                style={vscDarkPlus}
+                                showLineNumbers
+                                customStyle={{
+                                  margin: 0,
+                                  padding: '0.875rem 1rem',
+                                  background: 'transparent',
+                                  fontSize: '0.78rem',
+                                  lineHeight: '1.55',
+                                }}
+                                lineNumberStyle={{
+                                  minWidth: '2.25em',
+                                  paddingRight: '1em',
+                                  color: '#52525b',
+                                  userSelect: 'none',
+                                }}
+                              >
+                                {item.content}
+                              </SyntaxHighlighter>
+                            </div>
+
+                            {isLongCode && (
+                              <button
+                                onClick={() => toggleExpand(item.id)}
+                                className="flex w-full items-center justify-center gap-1 border-t border-zinc-800/80 bg-zinc-900/60 py-1.5 text-[11px] text-zinc-400 transition hover:bg-zinc-900 hover:text-zinc-200"
+                              >
+                                {isExpanded ? (
+                                  <>
+                                    <ChevronUp className="h-3.5 w-3.5" />
+                                    Collapse ({lineCount} lines)
+                                  </>
+                                ) : (
+                                  <>
+                                    <ChevronDown className="h-3.5 w-3.5" />
+                                    Show all {lineCount} lines
+                                  </>
+                                )}
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          <a
+                            href={item.content}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center justify-between rounded-lg border border-zinc-800/80 bg-zinc-950/70 px-3.5 py-2.5 font-mono text-xs text-zinc-300 transition hover:border-zinc-700 hover:text-white"
+                          >
+                            <span className="truncate">{item.content}</span>
+                            <ExternalLink className="ml-2 h-3.5 w-3.5 shrink-0 text-zinc-500" />
+                          </a>
+                        )}
+
+                        {/* Tags */}
+                        {item.tags && item.tags.length > 0 && (
+                          <div className="mt-3.5 flex flex-wrap items-center gap-1.5">
+                            {item.tags.map((tag, idx) => (
+                              <button
+                                key={idx}
+                                onClick={() => setSearchQuery(tag)}
+                                className="rounded-md bg-zinc-900 px-2 py-0.5 font-mono text-[11px] text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200"
+                              >
+                                #{tag}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </article>
+                );
+              })
+            )}
+          </main>
+        </div>
       </div>
     </div>
   );
