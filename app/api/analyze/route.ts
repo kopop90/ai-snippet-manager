@@ -3,11 +3,13 @@ import { GoogleGenAI, Type } from '@google/genai';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-// ใช้โมเดลที่รองรับและลองซ้ำ 3 ครั้งเมื่อเจอ 503 High Demand
+// สลับข้ามโมเดลต่างรุ่นและขนาดที่มีอยู่ใน API Key จริง (แก้ปัญหา 503 High Demand)
 const FALLBACK_MODELS = [
   'gemini-3.8-flash',
-  'gemini-3.8-flash',
-  'gemini-3.8-flash',
+  'gemini-3.7-flash',
+  'gemini-3.5-flash-lite',
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
 ];
 
 export async function POST(req: Request) {
@@ -37,8 +39,7 @@ ${textToAnalyze}`;
     let usedModel = '';
     let lastError;
 
-    for (let i = 0; i < FALLBACK_MODELS.length; i++) {
-      const modelName = FALLBACK_MODELS[i];
+    for (const modelName of FALLBACK_MODELS) {
       try {
         response = await ai.models.generateContent({
           model: modelName,
@@ -62,14 +63,11 @@ ${textToAnalyze}`;
         });
 
         usedModel = modelName;
-        console.log(`✅ AI Success (attempt ${i + 1}): ${modelName}`);
+        console.log(`✅ AI Success: ${modelName}`);
         break;
       } catch (err: unknown) {
         lastError = err;
-        console.warn(`❌ Attempt ${i + 1} failed (${modelName}):`, err instanceof Error ? err.message : String(err));
-        if (i < FALLBACK_MODELS.length - 1) {
-          await new Promise((resolve) => setTimeout(resolve, 1500));
-        }
+        console.warn(`❌ Failed (${modelName}):`, err instanceof Error ? err.message : String(err));
       }
     }
 
