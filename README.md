@@ -1,5 +1,13 @@
 # 🚀 AI Snippet & Bookmark Manager
 
+## 💡 Why I Built This (Problem & Solution)
+
+While GitHub is great for full repositories and version control, developers constantly encounter **"micro-knowledge"** during daily work—such as reusable SQL queries, utility functions, regex patterns, and technical documentation links.
+
+* **The Problem (Save Fast, Lose Later):** Existing tools like GitHub Gist or browser bookmarks create friction. Developers often skip naming files, writing descriptions, or organizing tags when saving things in a hurry—making it nearly impossible to search and retrieve them weeks later.
+* **The Solution (Zero-Friction AI Indexing):** **SnippetVault** eliminates manual organization. Simply paste raw code or a URL and hit save—Google Gemini automatically infers the programming language, generates a concise title, summarizes the core logic, and assigns searchable tags in seconds.
+* **Verified & Context-Ready:** Unlike re-prompting an LLM from scratch every time, this vault acts as a personal archive of battle-tested snippets paired with official docs, enabling instant retrieval by keyword, language, or tag.
+
 A full-stack developer productivity tool for storing, organizing, and searching code snippets and web bookmarks—powered by **Google Gemini AI** for automatic title generation, programming language detection, summarization, and smart tagging.
 
 🔗 **Live Demo:** [https://ai-snippet-manager-one.vercel.app/](https://ai-snippet-manager-one.vercel.app/)
