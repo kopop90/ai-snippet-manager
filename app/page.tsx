@@ -223,7 +223,7 @@ export default function Home() {
     });
     return Object.entries(map)
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 8)
+      .slice(0, 10)
       .map(([tag]) => tag);
   }, [snippets]);
 
@@ -254,9 +254,9 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-[#09090B] text-zinc-100 selection:bg-zinc-700 selection:text-white">
-      {/* Sticky Top Navbar */}
-      <header className="sticky top-0 z-30 border-b border-zinc-800/80 bg-[#09090B]/85 backdrop-blur-md">
-        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
+      {/* Full-Width Sticky Top Navbar */}
+      <header className="sticky top-0 z-30 border-b border-zinc-800/80 bg-[#09090B]/90 backdrop-blur-md">
+        <div className="mx-auto flex h-14 w-full max-w-[1680px] items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
           {/* Brand */}
           <div className="flex items-center gap-2.5">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900 text-zinc-200">
@@ -273,7 +273,7 @@ export default function Home() {
           </div>
 
           {/* Center Search Bar */}
-          <div className="relative max-w-md flex-1">
+          <div className="relative max-w-xl flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500" />
             <input
               type="text"
@@ -312,9 +312,9 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Main 2-Column Workspace */}
-      <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-6 sm:px-6 lg:flex-row lg:items-start">
-        {/* Left Sidebar Navigation (Sticky on Desktop) */}
+      {/* Full-Width Workspace Container */}
+      <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-6 px-4 py-6 sm:px-6 lg:flex-row lg:items-start lg:px-8">
+        {/* Left Sidebar Navigation */}
         <aside className="w-full shrink-0 space-y-6 lg:sticky lg:top-20 lg:w-56">
           {/* Library Section */}
           <div>
@@ -445,7 +445,7 @@ export default function Home() {
           )}
         </aside>
 
-        {/* Right Main Content Area */}
+        {/* Right Main Content Area (Expanded Full Width) */}
         <div className="min-w-0 flex-1 space-y-6">
           {/* Collapsible Composer Panel */}
           {isComposerOpen && (
@@ -512,7 +512,7 @@ export default function Home() {
                 {/* Content Input */}
                 {type === 'code' ? (
                   <textarea
-                    rows={4}
+                    rows={3}
                     value={content}
                     onChange={(e) => setContent(e.target.value)}
                     placeholder="Paste code snippet here..."
@@ -595,8 +595,8 @@ export default function Home() {
             )}
           </div>
 
-          {/* Cards Stream */}
-          <main className="space-y-4">
+          {/* 2-Column Cards Grid */}
+          <main className="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
             {isSubmitting && (
               <div className="animate-pulse rounded-xl border border-zinc-800 bg-[#111114] p-5">
                 <div className="mb-3 flex items-center justify-between">
@@ -609,11 +609,11 @@ export default function Home() {
             )}
 
             {isLoading ? (
-              <div className="py-16 text-center text-xs text-zinc-500">
+              <div className="col-span-full py-16 text-center text-xs text-zinc-500">
                 Loading vault...
               </div>
             ) : filteredSnippets.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-zinc-800 py-14 text-center">
+              <div className="col-span-full rounded-xl border border-dashed border-zinc-800 py-14 text-center">
                 <p className="text-xs text-zinc-500">
                   No entries found matching your criteria.
                 </p>
@@ -622,13 +622,13 @@ export default function Home() {
               filteredSnippets.map((item) => {
                 const isEditing = editingId === item.id;
                 const lineCount = item.content.split('\n').length;
-                const isLongCode = item.type === 'code' && lineCount > 14;
+                const isLongCode = item.type === 'code' && lineCount > 12;
                 const isExpanded = !!expandedIds[item.id];
 
                 return (
                   <article
                     key={item.id}
-                    className="group rounded-xl border border-zinc-800/90 bg-[#111114] p-5 transition-colors hover:border-zinc-700/90"
+                    className="group flex flex-col justify-between rounded-xl border border-zinc-800/90 bg-[#111114] p-5 transition-colors hover:border-zinc-700/90"
                   >
                     {isEditing ? (
                       <div className="space-y-3">
@@ -651,7 +651,7 @@ export default function Home() {
                                 language: e.target.value,
                               })
                             }
-                            className="w-32 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 font-mono text-xs text-zinc-100 focus:outline-none"
+                            className="w-28 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 font-mono text-xs text-zinc-100 focus:outline-none"
                             placeholder="Language"
                           />
                         </div>
@@ -708,138 +708,140 @@ export default function Home() {
                       </div>
                     ) : (
                       <>
-                        {/* Card Top Bar */}
-                        <div className="mb-3 flex items-start justify-between gap-4">
-                          <div className="flex flex-wrap items-center gap-2">
-                            {item.type === 'code' ? (
-                              <Code2 className="h-4 w-4 shrink-0 text-zinc-400" />
-                            ) : (
-                              <LinkIcon className="h-4 w-4 shrink-0 text-zinc-400" />
-                            )}
-                            <h2 className="text-sm font-medium text-zinc-100">
-                              {item.title}
-                            </h2>
-                            <span className="rounded border border-zinc-800 bg-zinc-900 px-1.5 py-0.5 font-mono text-[10px] text-zinc-400">
-                              {item.language}
-                            </span>
-                            <span className="text-[11px] text-zinc-600">
-                              {formatDate(item.created_at)}
-                            </span>
-                          </div>
-
-                          {/* Card Actions */}
-                          <div className="flex items-center gap-1 opacity-75 transition-opacity group-hover:opacity-100">
-                            <button
-                              onClick={() => handleCopy(item.id, item.content)}
-                              title="Copy"
-                              className="flex items-center gap-1 rounded-md border border-transparent px-2 py-1 text-[11px] text-zinc-400 transition hover:border-zinc-800 hover:bg-zinc-900 hover:text-zinc-200"
-                            >
-                              {copiedId === item.id ? (
-                                <>
-                                  <Check className="h-3.5 w-3.5 text-emerald-400" />
-                                  <span className="text-emerald-400">
-                                    Copied
-                                  </span>
-                                </>
+                        <div>
+                          {/* Card Top Bar */}
+                          <div className="mb-3 flex items-start justify-between gap-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                              {item.type === 'code' ? (
+                                <Code2 className="h-4 w-4 shrink-0 text-zinc-400" />
                               ) : (
-                                <Copy className="h-3.5 w-3.5" />
+                                <LinkIcon className="h-4 w-4 shrink-0 text-zinc-400" />
                               )}
-                            </button>
-
-                            <button
-                              onClick={() => startEdit(item)}
-                              title="Edit"
-                              className="rounded-md p-1.5 text-zinc-400 transition hover:bg-zinc-900 hover:text-zinc-200"
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </button>
-
-                            <button
-                              onClick={() => handleDelete(item.id)}
-                              title="Delete"
-                              className="rounded-md p-1.5 text-zinc-400 transition hover:bg-zinc-900 hover:text-red-400"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* AI Summary Callout */}
-                        {item.ai_summary && (
-                          <div className="mb-3.5 flex flex-col justify-between gap-1 border-l-2 border-zinc-700 pl-3 py-0.5 sm:flex-row sm:items-end">
-                            <p className="text-xs leading-relaxed text-zinc-300">
-                              {item.ai_summary}
-                            </p>
-                            {item.ai_model && (
-                              <span className="shrink-0 font-mono text-[10px] text-zinc-500">
-                                {item.ai_model}
+                              <h2 className="text-sm font-medium text-zinc-100">
+                                {item.title}
+                              </h2>
+                              <span className="rounded border border-zinc-800 bg-zinc-900 px-1.5 py-0.5 font-mono text-[10px] text-zinc-400">
+                                {item.language}
                               </span>
-                            )}
-                          </div>
-                        )}
-
-                        {/* Code Block or Link */}
-                        {item.type === 'code' ? (
-                          <div className="relative overflow-hidden rounded-lg border border-zinc-800/80 bg-[#0d0d10]">
-                            <div
-                              className={
-                                isLongCode && !isExpanded
-                                  ? 'max-h-[250px] overflow-hidden'
-                                  : ''
-                              }
-                            >
-                              <SyntaxHighlighter
-                                language={item.language}
-                                style={vscDarkPlus}
-                                showLineNumbers
-                                customStyle={{
-                                  margin: 0,
-                                  padding: '0.875rem 1rem',
-                                  background: 'transparent',
-                                  fontSize: '0.78rem',
-                                  lineHeight: '1.55',
-                                }}
-                                lineNumberStyle={{
-                                  minWidth: '2.25em',
-                                  paddingRight: '1em',
-                                  color: '#52525b',
-                                  userSelect: 'none',
-                                }}
-                              >
-                                {item.content}
-                              </SyntaxHighlighter>
+                              <span className="text-[11px] text-zinc-600">
+                                {formatDate(item.created_at)}
+                              </span>
                             </div>
 
-                            {isLongCode && (
+                            {/* Card Actions */}
+                            <div className="flex shrink-0 items-center gap-1 opacity-75 transition-opacity group-hover:opacity-100">
                               <button
-                                onClick={() => toggleExpand(item.id)}
-                                className="flex w-full items-center justify-center gap-1 border-t border-zinc-800/80 bg-zinc-900/60 py-1.5 text-[11px] text-zinc-400 transition hover:bg-zinc-900 hover:text-zinc-200"
+                                onClick={() => handleCopy(item.id, item.content)}
+                                title="Copy"
+                                className="flex items-center gap-1 rounded-md border border-transparent px-2 py-1 text-[11px] text-zinc-400 transition hover:border-zinc-800 hover:bg-zinc-900 hover:text-zinc-200"
                               >
-                                {isExpanded ? (
+                                {copiedId === item.id ? (
                                   <>
-                                    <ChevronUp className="h-3.5 w-3.5" />
-                                    Collapse ({lineCount} lines)
+                                    <Check className="h-3.5 w-3.5 text-emerald-400" />
+                                    <span className="text-emerald-400">
+                                      Copied
+                                    </span>
                                   </>
                                 ) : (
-                                  <>
-                                    <ChevronDown className="h-3.5 w-3.5" />
-                                    Show all {lineCount} lines
-                                  </>
+                                  <Copy className="h-3.5 w-3.5" />
                                 )}
                               </button>
-                            )}
+
+                              <button
+                                onClick={() => startEdit(item)}
+                                title="Edit"
+                                className="rounded-md p-1.5 text-zinc-400 transition hover:bg-zinc-900 hover:text-zinc-200"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+
+                              <button
+                                onClick={() => handleDelete(item.id)}
+                                title="Delete"
+                                className="rounded-md p-1.5 text-zinc-400 transition hover:bg-zinc-900 hover:text-red-400"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
                           </div>
-                        ) : (
-                          <a
-                            href={item.content}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center justify-between rounded-lg border border-zinc-800/80 bg-zinc-950/70 px-3.5 py-2.5 font-mono text-xs text-zinc-300 transition hover:border-zinc-700 hover:text-white"
-                          >
-                            <span className="truncate">{item.content}</span>
-                            <ExternalLink className="ml-2 h-3.5 w-3.5 shrink-0 text-zinc-500" />
-                          </a>
-                        )}
+
+                          {/* AI Summary Callout */}
+                          {item.ai_summary && (
+                            <div className="mb-3.5 flex flex-col justify-between gap-1 border-l-2 border-zinc-700 pl-3 py-0.5">
+                              <p className="text-xs leading-relaxed text-zinc-300">
+                                {item.ai_summary}
+                              </p>
+                              {item.ai_model && (
+                                <span className="font-mono text-[10px] text-zinc-500">
+                                  via {item.ai_model}
+                                </span>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Code Block or Link */}
+                          {item.type === 'code' ? (
+                            <div className="relative overflow-hidden rounded-lg border border-zinc-800/80 bg-[#0d0d10]">
+                              <div
+                                className={
+                                  isLongCode && !isExpanded
+                                    ? 'max-h-[220px] overflow-hidden'
+                                    : ''
+                                }
+                              >
+                                <SyntaxHighlighter
+                                  language={item.language}
+                                  style={vscDarkPlus}
+                                  showLineNumbers
+                                  customStyle={{
+                                    margin: 0,
+                                    padding: '0.875rem 1rem',
+                                    background: 'transparent',
+                                    fontSize: '0.76rem',
+                                    lineHeight: '1.55',
+                                  }}
+                                  lineNumberStyle={{
+                                    minWidth: '2.25em',
+                                    paddingRight: '1em',
+                                    color: '#52525b',
+                                    userSelect: 'none',
+                                  }}
+                                >
+                                  {item.content}
+                                </SyntaxHighlighter>
+                              </div>
+
+                              {isLongCode && (
+                                <button
+                                  onClick={() => toggleExpand(item.id)}
+                                  className="flex w-full items-center justify-center gap-1 border-t border-zinc-800/80 bg-zinc-900/60 py-1.5 text-[11px] text-zinc-400 transition hover:bg-zinc-900 hover:text-zinc-200"
+                                >
+                                  {isExpanded ? (
+                                    <>
+                                      <ChevronUp className="h-3.5 w-3.5" />
+                                      Collapse ({lineCount} lines)
+                                    </>
+                                  ) : (
+                                    <>
+                                      <ChevronDown className="h-3.5 w-3.5" />
+                                      Show all {lineCount} lines
+                                    </>
+                                  )}
+                                </button>
+                              )}
+                            </div>
+                          ) : (
+                            <a
+                              href={item.content}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center justify-between rounded-lg border border-zinc-800/80 bg-zinc-950/70 px-3.5 py-2.5 font-mono text-xs text-zinc-300 transition hover:border-zinc-700 hover:text-white"
+                            >
+                              <span className="truncate">{item.content}</span>
+                              <ExternalLink className="ml-2 h-3.5 w-3.5 shrink-0 text-zinc-500" />
+                            </a>
+                          )}
+                        </div>
 
                         {/* Tags */}
                         {item.tags && item.tags.length > 0 && (
