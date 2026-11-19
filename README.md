@@ -70,3 +70,10 @@ A full-stack developer productivity tool for storing, organizing, and searching 
    );
 4. Run the development server:
     npm run dev
+
+## 🛡️ Production Safeguards & Engineering Decisions
+
+* **Multi-Model Fallback & Latency Optimization:** Prioritizes `gemini-3.5-flash-lite` for sub-2s response times within Vercel's serverless execution window, automatically falling back across model tiers if a `503 High Demand` spike occurs.
+* **Strict Structured Outputs:** Uses `@google/genai` `responseSchema` to guarantee deterministic JSON payloads (title, language, Thai summary, and tags) without fragile regex parsing.
+* **IP-Based Rate Limiting:** Protects the `/api/analyze` endpoint against abuse with an in-memory sliding window limiter (`10 requests / minute / IP`).
+* **Pinned Showcase Protection & Keyboard UX:** Supports global `Ctrl/Cmd + K` instant search and `is_pinned` protection so visitors can freely test creating and deleting entries without accidentally wiping showcase items.

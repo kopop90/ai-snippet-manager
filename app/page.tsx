@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
@@ -23,6 +23,8 @@ import {
   Layers,
   Hash,
   FolderCode,
+  Pin,
+  Lock,
 } from 'lucide-react';
 
 const supabase = createClient(
@@ -40,6 +42,7 @@ interface Snippet {
   ai_summary: string | null;
   ai_model: string | null;
   tags: string[];
+  is_pinned?: boolean;
 }
 
 export default function Home() {
@@ -47,6 +50,9 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isComposerOpen, setIsComposerOpen] = useState(true);
+  const [statusBanner, setStatusBanner] = useState<string | null>(null);
+
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Form States
   const [title, setTitle] = useState('');
@@ -71,15 +77,39 @@ export default function Home() {
     tags: '',
   });
 
+  // Global Keyboard Shortcuts (Ctrl+K / Cmd+K to focus search, Esc to clear)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      } else if (e.key === 'Escape') {
+        if (document.activeElement === searchInputRef.current) {
+          setSearchQuery('');
+          searchInputRef.current?.blur();
+        }
+        if (editingId) setEditingId(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [editingId]);
+
   useEffect(() => {
     fetchSnippets();
   }, []);
+
+  const showNotice = (msg: string) => {
+    setStatusBanner(msg);
+    setTimeout(() => setStatusBanner(null), 3500);
+  };
 
   const fetchSnippets = async () => {
     setIsLoading(true);
     const { data, error } = await supabase
       .from('snippets')
       .select('*')
+      .order('is_pinned', { ascending: false })
       .order('created_at', { ascending: false });
 
     if (!error && data) {
@@ -99,6 +129,10 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, type, content, language }),
       });
+
+      if (res.status === 429) {
+        showNotice('Rate limit reached (10 req/min). Saved without AI analysis.');
+      }
 
       const aiData = res.ok ? await res.json() : null;
 
@@ -120,6 +154,7 @@ export default function Home() {
         ai_summary: aiData?.summary || null,
         ai_model: aiData?.model || null,
         tags: aiData?.tags?.length ? aiData.tags : [type],
+        is_pinned: false,
       };
 
       const { data, error } = await supabase
@@ -129,7 +164,11 @@ export default function Home() {
         .single();
 
       if (!error && data) {
-        setSnippets((prev) => [data, ...prev]);
+        setSnippets((prev) => {
+          const pinned = prev.filter((item) => item.is_pinned);
+          const unpinned = prev.filter((item) => !item.is_pinned);
+          return [...pinned, data, ...unpinned];
+        });
         setTitle('');
         setContent('');
         setLanguage('auto');
@@ -141,10 +180,27 @@ export default function Home() {
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const handleTogglePin = async (item: Snippet) => {
+    const nextPinned = !item.is_pinned;
+    setSnippets((prev) =>
+      prev
+        .map((s) => (s.id === item.id ? { ...s, is_pinned: nextPinned } : s))
+        .sort((a, b) => Number(Boolean(b.is_pinned)) - Number(Boolean(a.is_pinned)))
+    );
+    await supabase
+      .from('snippets')
+      .update({ is_pinned: nextPinned })
+      .eq('id', item.id);
+  };
+
+  const handleDelete = async (item: Snippet) => {
+    if (item.is_pinned) {
+      showNotice('Pinned showcase entry is locked. Unpin first to delete.');
+      return;
+    }
     const previous = snippets;
-    setSnippets((prev) => prev.filter((item) => item.id !== id));
-    const { error } = await supabase.from('snippets').delete().eq('id', id);
+    setSnippets((prev) => prev.filter((s) => s.id !== item.id));
+    const { error } = await supabase.from('snippets').delete().eq('id', item.id);
     if (error) setSnippets(previous);
   };
 
@@ -192,7 +248,6 @@ export default function Home() {
     setExpandedIds((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
-  // Stats & Sidebar Metadata
   const codeCount = useMemo(
     () => snippets.filter((s) => s.type === 'code').length,
     [snippets]
@@ -267,28 +322,33 @@ export default function Home() {
                 SnippetVault
               </span>
               <span className="hidden rounded bg-zinc-900 px-1.5 py-0.5 font-mono text-[10px] text-zinc-500 sm:inline-block">
-                v1.0
+                v1.1
               </span>
             </div>
           </div>
 
-          {/* Center Search Bar */}
+          {/* Center Search Bar with Ctrl+K Hint */}
           <div className="relative max-w-xl flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500" />
             <input
+              ref={searchInputRef}
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search snippets, URLs, summaries, or #tags..."
-              className="w-full rounded-lg border border-zinc-800 bg-zinc-900/70 py-1.5 pl-8 pr-7 text-xs text-zinc-200 placeholder-zinc-500 transition focus:border-zinc-600 focus:bg-zinc-900 focus:outline-none"
+              className="w-full rounded-lg border border-zinc-800 bg-zinc-900/70 py-1.5 pl-8 pr-16 text-xs text-zinc-200 placeholder-zinc-500 transition focus:border-zinc-600 focus:bg-zinc-900 focus:outline-none"
             />
-            {searchQuery && (
+            {searchQuery ? (
               <button
                 onClick={() => setSearchQuery('')}
                 className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
+            ) : (
+              <kbd className="pointer-events-none absolute right-2.5 top-1/2 hidden -translate-y-1/2 rounded border border-zinc-800 bg-zinc-950 px-1.5 py-0.5 font-mono text-[10px] text-zinc-500 sm:inline-block">
+                Ctrl K
+              </kbd>
             )}
           </div>
 
@@ -311,6 +371,14 @@ export default function Home() {
           </button>
         </div>
       </header>
+
+      {/* Toast Notification Banner */}
+      {statusBanner && (
+        <div className="fixed bottom-5 right-5 z-50 flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 px-3.5 py-2.5 text-xs text-zinc-200 shadow-lg">
+          <Lock className="h-3.5 w-3.5 text-amber-400" />
+          <span>{statusBanner}</span>
+        </div>
+      )}
 
       {/* Full-Width Workspace Container */}
       <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-6 px-4 py-6 sm:px-6 lg:flex-row lg:items-start lg:px-8">
@@ -445,7 +513,7 @@ export default function Home() {
           )}
         </aside>
 
-        {/* Right Main Content Area (Expanded Full Width) */}
+        {/* Right Main Content Area */}
         <div className="min-w-0 flex-1 space-y-6">
           {/* Collapsible Composer Panel */}
           {isComposerOpen && (
@@ -628,7 +696,11 @@ export default function Home() {
                 return (
                   <article
                     key={item.id}
-                    className="group flex flex-col justify-between rounded-xl border border-zinc-800/90 bg-[#111114] p-5 transition-colors hover:border-zinc-700/90"
+                    className={`group flex flex-col justify-between rounded-xl border p-5 transition-colors ${
+                      item.is_pinned
+                        ? 'border-zinc-800 bg-[#121216] hover:border-zinc-700'
+                        : 'border-zinc-800/80 bg-[#111114] hover:border-zinc-700/90'
+                    }`}
                   >
                     {isEditing ? (
                       <div className="space-y-3">
@@ -731,6 +803,18 @@ export default function Home() {
                             {/* Card Actions */}
                             <div className="flex shrink-0 items-center gap-1 opacity-75 transition-opacity group-hover:opacity-100">
                               <button
+                                onClick={() => handleTogglePin(item)}
+                                title={item.is_pinned ? 'Pinned (Protected)' : 'Pin entry'}
+                                className={`rounded-md p-1.5 transition ${
+                                  item.is_pinned
+                                    ? 'text-amber-400/90 hover:bg-zinc-900'
+                                    : 'text-zinc-500 hover:bg-zinc-900 hover:text-zinc-200'
+                                }`}
+                              >
+                                <Pin className="h-3.5 w-3.5" />
+                              </button>
+
+                              <button
                                 onClick={() => handleCopy(item.id, item.content)}
                                 title="Copy"
                                 className="flex items-center gap-1 rounded-md border border-transparent px-2 py-1 text-[11px] text-zinc-400 transition hover:border-zinc-800 hover:bg-zinc-900 hover:text-zinc-200"
@@ -756,9 +840,17 @@ export default function Home() {
                               </button>
 
                               <button
-                                onClick={() => handleDelete(item.id)}
-                                title="Delete"
-                                className="rounded-md p-1.5 text-zinc-400 transition hover:bg-zinc-900 hover:text-red-400"
+                                onClick={() => handleDelete(item)}
+                                title={
+                                  item.is_pinned
+                                    ? 'Protected demo item'
+                                    : 'Delete'
+                                }
+                                className={`rounded-md p-1.5 transition ${
+                                  item.is_pinned
+                                    ? 'cursor-not-allowed text-zinc-700'
+                                    : 'text-zinc-400 hover:bg-zinc-900 hover:text-red-400'
+                                }`}
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
                               </button>
