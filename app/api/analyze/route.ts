@@ -3,9 +3,10 @@ import { GoogleGenAI, Type } from '@google/genai';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-// ใช้โมเดลตระกูล 3.8 ที่เร็วที่สุดเป็นตัวหลัก และสลับตัวสำรองแบบไม่มีหน่วงเวลานาน
+// ใช้โมเดลที่รองรับและลองซ้ำ 3 ครั้งเมื่อเจอ 503 High Demand
 const FALLBACK_MODELS = [
-  'gemini-3.8-flash-lite',
+  'gemini-3.8-flash',
+  'gemini-3.8-flash',
   'gemini-3.8-flash',
 ];
 
@@ -36,7 +37,8 @@ ${textToAnalyze}`;
     let usedModel = '';
     let lastError;
 
-    for (const modelName of FALLBACK_MODELS) {
+    for (let i = 0; i < FALLBACK_MODELS.length; i++) {
+      const modelName = FALLBACK_MODELS[i];
       try {
         response = await ai.models.generateContent({
           model: modelName,
@@ -60,11 +62,14 @@ ${textToAnalyze}`;
         });
 
         usedModel = modelName;
-        console.log(`✅ AI Success: ${modelName}`);
+        console.log(`✅ AI Success (attempt ${i + 1}): ${modelName}`);
         break;
       } catch (err: unknown) {
         lastError = err;
-        console.warn(`❌ Failed ${modelName}:`, err instanceof Error ? err.message : String(err));
+        console.warn(`❌ Attempt ${i + 1} failed (${modelName}):`, err instanceof Error ? err.message : String(err));
+        if (i < FALLBACK_MODELS.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+        }
       }
     }
 
