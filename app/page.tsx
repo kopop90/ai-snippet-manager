@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { createClient } from '@supabase/supabase-js';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import React, { useState, useEffect, useMemo, useRef } from "react";
+import { createClient } from "@supabase/supabase-js";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 import {
   Code2,
   Link as LinkIcon,
@@ -25,18 +25,18 @@ import {
   FolderCode,
   Pin,
   Lock,
-} from 'lucide-react';
+} from "lucide-react";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
 );
 
 interface Snippet {
   id: string;
   created_at: string;
   title: string;
-  type: 'code' | 'link';
+  type: "code" | "link";
   content: string;
   language: string;
   ai_summary: string | null;
@@ -55,44 +55,44 @@ export default function Home() {
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Form States
-  const [title, setTitle] = useState('');
-  const [type, setType] = useState<'code' | 'link'>('code');
-  const [language, setLanguage] = useState('auto');
-  const [content, setContent] = useState('');
+  const [title, setTitle] = useState("");
+  const [type, setType] = useState<"code" | "link">("code");
+  const [language, setLanguage] = useState("auto");
+  const [content, setContent] = useState("");
 
   // Filter & Search States
-  const [searchQuery, setSearchQuery] = useState('');
-  const [typeFilter, setTypeFilter] = useState<'all' | 'code' | 'link'>('all');
-  const [langFilter, setLangFilter] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState("");
+  const [typeFilter, setTypeFilter] = useState<"all" | "code" | "link">("all");
+  const [langFilter, setLangFilter] = useState<string>("all");
 
   // Card Interaction States
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({
-    title: '',
-    content: '',
-    language: '',
-    ai_summary: '',
-    tags: '',
+    title: "",
+    content: "",
+    language: "",
+    ai_summary: "",
+    tags: "",
   });
 
   // Global Keyboard Shortcuts (Ctrl+K / Cmd+K to focus search, Esc to clear)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         searchInputRef.current?.focus();
-      } else if (e.key === 'Escape') {
+      } else if (e.key === "Escape") {
         if (document.activeElement === searchInputRef.current) {
-          setSearchQuery('');
+          setSearchQuery("");
           searchInputRef.current?.blur();
         }
         if (editingId) setEditingId(null);
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [editingId]);
 
   useEffect(() => {
@@ -107,10 +107,10 @@ export default function Home() {
   const fetchSnippets = async () => {
     setIsLoading(true);
     const { data, error } = await supabase
-      .from('snippets')
-      .select('*')
-      .order('is_pinned', { ascending: false })
-      .order('created_at', { ascending: false });
+      .from("snippets")
+      .select("*")
+      .order("is_pinned", { ascending: false })
+      .order("created_at", { ascending: false });
 
     if (!error && data) {
       setSnippets(data);
@@ -124,14 +124,16 @@ export default function Home() {
 
     setIsSubmitting(true);
     try {
-      const res = await fetch('/api/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title, type, content, language }),
       });
 
       if (res.status === 429) {
-        showNotice('Rate limit reached (10 req/min). Saved without AI analysis.');
+        showNotice(
+          "Rate limit reached (10 req/min). Saved without AI analysis.",
+        );
       }
 
       const aiData = res.ok ? await res.json() : null;
@@ -139,12 +141,12 @@ export default function Home() {
       const finalTitle =
         title.trim() ||
         aiData?.suggestedTitle ||
-        (type === 'link' ? 'Saved Bookmark' : 'Code Snippet');
+        (type === "link" ? "Saved Bookmark" : "Code Snippet");
 
       const finalLang =
-        language !== 'auto'
+        language !== "auto"
           ? language
-          : aiData?.detectedLanguage || (type === 'link' ? 'url' : 'plaintext');
+          : aiData?.detectedLanguage || (type === "link" ? "url" : "plaintext");
 
       const newRecord = {
         title: finalTitle,
@@ -158,7 +160,7 @@ export default function Home() {
       };
 
       const { data, error } = await supabase
-        .from('snippets')
+        .from("snippets")
         .insert([newRecord])
         .select()
         .single();
@@ -169,12 +171,12 @@ export default function Home() {
           const unpinned = prev.filter((item) => !item.is_pinned);
           return [...pinned, data, ...unpinned];
         });
-        setTitle('');
-        setContent('');
-        setLanguage('auto');
+        setTitle("");
+        setContent("");
+        setLanguage("auto");
       }
     } catch (err) {
-      console.error('Submit error:', err);
+      console.error("Submit error:", err);
     } finally {
       setIsSubmitting(false);
     }
@@ -185,22 +187,27 @@ export default function Home() {
     setSnippets((prev) =>
       prev
         .map((s) => (s.id === item.id ? { ...s, is_pinned: nextPinned } : s))
-        .sort((a, b) => Number(Boolean(b.is_pinned)) - Number(Boolean(a.is_pinned)))
+        .sort(
+          (a, b) => Number(Boolean(b.is_pinned)) - Number(Boolean(a.is_pinned)),
+        ),
     );
     await supabase
-      .from('snippets')
+      .from("snippets")
       .update({ is_pinned: nextPinned })
-      .eq('id', item.id);
+      .eq("id", item.id);
   };
 
   const handleDelete = async (item: Snippet) => {
     if (item.is_pinned) {
-      showNotice('Pinned showcase entry is locked. Unpin first to delete.');
+      showNotice("Pinned showcase entry is locked. Unpin first to delete.");
       return;
     }
     const previous = snippets;
     setSnippets((prev) => prev.filter((s) => s.id !== item.id));
-    const { error } = await supabase.from('snippets').delete().eq('id', item.id);
+    const { error } = await supabase
+      .from("snippets")
+      .delete()
+      .eq("id", item.id);
     if (error) setSnippets(previous);
   };
 
@@ -210,29 +217,32 @@ export default function Home() {
       title: item.title,
       content: item.content,
       language: item.language,
-      ai_summary: item.ai_summary || '',
-      tags: (item.tags || []).join(', '),
+      ai_summary: item.ai_summary || "",
+      tags: (item.tags || []).join(", "),
     });
   };
 
   const saveEdit = async (id: string) => {
     const updatedTags = editForm.tags
-      .split(',')
-      .map((t) => t.trim().replace(/^#/, ''))
+      .split(",")
+      .map((t) => t.trim().replace(/^#/, ""))
       .filter(Boolean);
 
     const updates = {
-      title: editForm.title.trim() || 'Untitled',
+      title: editForm.title.trim() || "Untitled",
       content: editForm.content.trim(),
-      language: editForm.language.trim().toLowerCase() || 'plaintext',
+      language: editForm.language.trim().toLowerCase() || "plaintext",
       ai_summary: editForm.ai_summary.trim() || null,
       tags: updatedTags,
     };
 
-    const { error } = await supabase.from('snippets').update(updates).eq('id', id);
+    const { error } = await supabase
+      .from("snippets")
+      .update(updates)
+      .eq("id", id);
     if (!error) {
       setSnippets((prev) =>
-        prev.map((item) => (item.id === id ? { ...item, ...updates } : item))
+        prev.map((item) => (item.id === id ? { ...item, ...updates } : item)),
       );
       setEditingId(null);
     }
@@ -249,18 +259,18 @@ export default function Home() {
   };
 
   const codeCount = useMemo(
-    () => snippets.filter((s) => s.type === 'code').length,
-    [snippets]
+    () => snippets.filter((s) => s.type === "code").length,
+    [snippets],
   );
   const linkCount = useMemo(
-    () => snippets.filter((s) => s.type === 'link').length,
-    [snippets]
+    () => snippets.filter((s) => s.type === "link").length,
+    [snippets],
   );
 
   const languageStats = useMemo(() => {
     const map: Record<string, number> = {};
     snippets
-      .filter((s) => s.type === 'code' && s.language && s.language !== 'url')
+      .filter((s) => s.type === "code" && s.language && s.language !== "url")
       .forEach((s) => {
         const l = s.language.toLowerCase();
         map[l] = (map[l] || 0) + 1;
@@ -284,8 +294,8 @@ export default function Home() {
 
   const filteredSnippets = useMemo(() => {
     return snippets.filter((item) => {
-      if (typeFilter !== 'all' && item.type !== typeFilter) return false;
-      if (langFilter !== 'all' && item.language.toLowerCase() !== langFilter)
+      if (typeFilter !== "all" && item.type !== typeFilter) return false;
+      if (langFilter !== "all" && item.language.toLowerCase() !== langFilter)
         return false;
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
@@ -301,9 +311,9 @@ export default function Home() {
 
   const formatDate = (dateStr: string) => {
     const d = new Date(dateStr);
-    return d.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
+    return d.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
     });
   };
 
@@ -340,7 +350,7 @@ export default function Home() {
             />
             {searchQuery ? (
               <button
-                onClick={() => setSearchQuery('')}
+                onClick={() => setSearchQuery("")}
                 className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
               >
                 <X className="h-3.5 w-3.5" />
@@ -392,13 +402,13 @@ export default function Home() {
             <nav className="flex gap-1 overflow-x-auto lg:flex-col">
               <button
                 onClick={() => {
-                  setTypeFilter('all');
-                  setLangFilter('all');
+                  setTypeFilter("all");
+                  setLangFilter("all");
                 }}
                 className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
-                  typeFilter === 'all' && langFilter === 'all'
-                    ? 'bg-zinc-800/90 text-zinc-100'
-                    : 'text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200'
+                  typeFilter === "all" && langFilter === "all"
+                    ? "bg-zinc-800/90 text-zinc-100"
+                    : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200"
                 }`}
               >
                 <span className="flex items-center gap-2">
@@ -412,13 +422,13 @@ export default function Home() {
 
               <button
                 onClick={() => {
-                  setTypeFilter('code');
-                  setLangFilter('all');
+                  setTypeFilter("code");
+                  setLangFilter("all");
                 }}
                 className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
-                  typeFilter === 'code' && langFilter === 'all'
-                    ? 'bg-zinc-800/90 text-zinc-100'
-                    : 'text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200'
+                  typeFilter === "code" && langFilter === "all"
+                    ? "bg-zinc-800/90 text-zinc-100"
+                    : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200"
                 }`}
               >
                 <span className="flex items-center gap-2">
@@ -432,13 +442,13 @@ export default function Home() {
 
               <button
                 onClick={() => {
-                  setTypeFilter('link');
-                  setLangFilter('all');
+                  setTypeFilter("link");
+                  setLangFilter("all");
                 }}
                 className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
-                  typeFilter === 'link'
-                    ? 'bg-zinc-800/90 text-zinc-100'
-                    : 'text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200'
+                  typeFilter === "link"
+                    ? "bg-zinc-800/90 text-zinc-100"
+                    : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200"
                 }`}
               >
                 <span className="flex items-center gap-2">
@@ -463,13 +473,13 @@ export default function Home() {
                   <button
                     key={lang}
                     onClick={() => {
-                      setTypeFilter('code');
-                      setLangFilter(langFilter === lang ? 'all' : lang);
+                      setTypeFilter("code");
+                      setLangFilter(langFilter === lang ? "all" : lang);
                     }}
                     className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs transition ${
                       langFilter === lang
-                        ? 'bg-zinc-800/90 font-medium text-zinc-100'
-                        : 'text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200'
+                        ? "bg-zinc-800/90 font-medium text-zinc-100"
+                        : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200"
                     }`}
                   >
                     <span className="flex items-center gap-2 font-mono text-[11px]">
@@ -496,12 +506,12 @@ export default function Home() {
                   <button
                     key={tag}
                     onClick={() =>
-                      setSearchQuery(searchQuery === tag ? '' : tag)
+                      setSearchQuery(searchQuery === tag ? "" : tag)
                     }
                     className={`inline-flex items-center gap-0.5 rounded-md border px-2 py-0.5 font-mono text-[11px] transition ${
                       searchQuery === tag
-                        ? 'border-zinc-600 bg-zinc-800 text-zinc-100'
-                        : 'border-zinc-800/80 bg-zinc-900/50 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
+                        ? "border-zinc-600 bg-zinc-800 text-zinc-100"
+                        : "border-zinc-800/80 bg-zinc-900/50 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200"
                     }`}
                   >
                     <Hash className="h-2.5 w-2.5 text-zinc-500" />
@@ -524,11 +534,11 @@ export default function Home() {
                   <div className="inline-flex rounded-lg border border-zinc-800 bg-zinc-950 p-0.5">
                     <button
                       type="button"
-                      onClick={() => setType('code')}
+                      onClick={() => setType("code")}
                       className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition ${
-                        type === 'code'
-                          ? 'bg-zinc-800 text-zinc-100'
-                          : 'text-zinc-500 hover:text-zinc-300'
+                        type === "code"
+                          ? "bg-zinc-800 text-zinc-100"
+                          : "text-zinc-500 hover:text-zinc-300"
                       }`}
                     >
                       <Code2 className="h-3.5 w-3.5" />
@@ -536,11 +546,11 @@ export default function Home() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setType('link')}
+                      onClick={() => setType("link")}
                       className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition ${
-                        type === 'link'
-                          ? 'bg-zinc-800 text-zinc-100'
-                          : 'text-zinc-500 hover:text-zinc-300'
+                        type === "link"
+                          ? "bg-zinc-800 text-zinc-100"
+                          : "text-zinc-500 hover:text-zinc-300"
                       }`}
                     >
                       <LinkIcon className="h-3.5 w-3.5" />
@@ -558,7 +568,7 @@ export default function Home() {
                   />
 
                   {/* Language Select */}
-                  {type === 'code' && (
+                  {type === "code" && (
                     <select
                       value={language}
                       onChange={(e) => setLanguage(e.target.value)}
@@ -578,7 +588,7 @@ export default function Home() {
                 </div>
 
                 {/* Content Input */}
-                {type === 'code' ? (
+                {type === "code" ? (
                   <textarea
                     rows={3}
                     value={content}
@@ -628,13 +638,13 @@ export default function Home() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-xs text-zinc-400">
               <span className="font-medium text-zinc-200">
-                {typeFilter === 'all'
-                  ? 'All Entries'
-                  : typeFilter === 'code'
-                  ? 'Code Snippets'
-                  : 'Web Bookmarks'}
+                {typeFilter === "all"
+                  ? "All Entries"
+                  : typeFilter === "code"
+                    ? "Code Snippets"
+                    : "Web Bookmarks"}
               </span>
-              {langFilter !== 'all' && (
+              {langFilter !== "all" && (
                 <span className="rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-[11px] text-zinc-200">
                   {langFilter}
                 </span>
@@ -644,17 +654,15 @@ export default function Home() {
                   &ldquo;{searchQuery}&rdquo;
                 </span>
               )}
-              <span className="text-zinc-600">
-                ({filteredSnippets.length})
-              </span>
+              <span className="text-zinc-600">({filteredSnippets.length})</span>
             </div>
 
-            {(typeFilter !== 'all' || langFilter !== 'all' || searchQuery) && (
+            {(typeFilter !== "all" || langFilter !== "all" || searchQuery) && (
               <button
                 onClick={() => {
-                  setTypeFilter('all');
-                  setLangFilter('all');
-                  setSearchQuery('');
+                  setTypeFilter("all");
+                  setLangFilter("all");
+                  setSearchQuery("");
                 }}
                 className="text-[11px] text-zinc-500 hover:text-zinc-300"
               >
@@ -689,8 +697,8 @@ export default function Home() {
             ) : (
               filteredSnippets.map((item) => {
                 const isEditing = editingId === item.id;
-                const lineCount = item.content.split('\n').length;
-                const isLongCode = item.type === 'code' && lineCount > 12;
+                const lineCount = item.content.split("\n").length;
+                const isLongCode = item.type === "code" && lineCount > 12;
                 const isExpanded = !!expandedIds[item.id];
 
                 return (
@@ -698,8 +706,8 @@ export default function Home() {
                     key={item.id}
                     className={`group flex flex-col justify-between rounded-xl border p-5 transition-colors ${
                       item.is_pinned
-                        ? 'border-zinc-800 bg-[#121216] hover:border-zinc-700'
-                        : 'border-zinc-800/80 bg-[#111114] hover:border-zinc-700/90'
+                        ? "border-zinc-800 bg-[#121216] hover:border-zinc-700"
+                        : "border-zinc-800/80 bg-[#111114] hover:border-zinc-700/90"
                     }`}
                   >
                     {isEditing ? (
@@ -709,7 +717,10 @@ export default function Home() {
                             type="text"
                             value={editForm.title}
                             onChange={(e) =>
-                              setEditForm({ ...editForm, title: e.target.value })
+                              setEditForm({
+                                ...editForm,
+                                title: e.target.value,
+                              })
                             }
                             className="flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-xs text-zinc-100 focus:outline-none"
                             placeholder="Title"
@@ -784,7 +795,7 @@ export default function Home() {
                           {/* Card Top Bar */}
                           <div className="mb-3 flex items-start justify-between gap-3">
                             <div className="flex flex-wrap items-center gap-2">
-                              {item.type === 'code' ? (
+                              {item.type === "code" ? (
                                 <Code2 className="h-4 w-4 shrink-0 text-zinc-400" />
                               ) : (
                                 <LinkIcon className="h-4 w-4 shrink-0 text-zinc-400" />
@@ -804,18 +815,24 @@ export default function Home() {
                             <div className="flex shrink-0 items-center gap-1 opacity-75 transition-opacity group-hover:opacity-100">
                               <button
                                 onClick={() => handleTogglePin(item)}
-                                title={item.is_pinned ? 'Pinned (Protected)' : 'Pin entry'}
+                                title={
+                                  item.is_pinned
+                                    ? "Pinned (Protected)"
+                                    : "Pin entry"
+                                }
                                 className={`rounded-md p-1.5 transition ${
                                   item.is_pinned
-                                    ? 'text-amber-400/90 hover:bg-zinc-900'
-                                    : 'text-zinc-500 hover:bg-zinc-900 hover:text-zinc-200'
+                                    ? "text-amber-400/90 hover:bg-zinc-900"
+                                    : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-200"
                                 }`}
                               >
                                 <Pin className="h-3.5 w-3.5" />
                               </button>
 
                               <button
-                                onClick={() => handleCopy(item.id, item.content)}
+                                onClick={() =>
+                                  handleCopy(item.id, item.content)
+                                }
                                 title="Copy"
                                 className="flex items-center gap-1 rounded-md border border-transparent px-2 py-1 text-[11px] text-zinc-400 transition hover:border-zinc-800 hover:bg-zinc-900 hover:text-zinc-200"
                               >
@@ -843,13 +860,13 @@ export default function Home() {
                                 onClick={() => handleDelete(item)}
                                 title={
                                   item.is_pinned
-                                    ? 'Protected demo item'
-                                    : 'Delete'
+                                    ? "Protected demo item"
+                                    : "Delete"
                                 }
                                 className={`rounded-md p-1.5 transition ${
                                   item.is_pinned
-                                    ? 'cursor-not-allowed text-zinc-700'
-                                    : 'text-zinc-400 hover:bg-zinc-900 hover:text-red-400'
+                                    ? "cursor-not-allowed text-zinc-700"
+                                    : "text-zinc-400 hover:bg-zinc-900 hover:text-red-400"
                                 }`}
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
@@ -872,13 +889,13 @@ export default function Home() {
                           )}
 
                           {/* Code Block or Link */}
-                          {item.type === 'code' ? (
+                          {item.type === "code" ? (
                             <div className="relative overflow-hidden rounded-lg border border-zinc-800/80 bg-[#0d0d10]">
                               <div
                                 className={
                                   isLongCode && !isExpanded
-                                    ? 'max-h-[220px] overflow-hidden'
-                                    : ''
+                                    ? "max-h-[220px] overflow-hidden"
+                                    : ""
                                 }
                               >
                                 <SyntaxHighlighter
@@ -887,16 +904,16 @@ export default function Home() {
                                   showLineNumbers
                                   customStyle={{
                                     margin: 0,
-                                    padding: '0.875rem 1rem',
-                                    background: 'transparent',
-                                    fontSize: '0.76rem',
-                                    lineHeight: '1.55',
+                                    padding: "0.875rem 1rem",
+                                    background: "transparent",
+                                    fontSize: "0.76rem",
+                                    lineHeight: "1.55",
                                   }}
                                   lineNumberStyle={{
-                                    minWidth: '2.25em',
-                                    paddingRight: '1em',
-                                    color: '#52525b',
-                                    userSelect: 'none',
+                                    minWidth: "2.25em",
+                                    paddingRight: "1em",
+                                    color: "#52525b",
+                                    userSelect: "none",
                                   }}
                                 >
                                   {item.content}
@@ -932,6 +949,54 @@ export default function Home() {
                               <span className="truncate">{item.content}</span>
                               <ExternalLink className="ml-2 h-3.5 w-3.5 shrink-0 text-zinc-500" />
                             </a>
+                          )}
+                        </div>
+
+                        {/* Card Actions */}
+                        <div className="flex shrink-0 items-center gap-1 opacity-80 transition-opacity group-hover:opacity-100">
+                          {item.is_pinned ? (
+                            <span
+                              title="Protected showcase entry"
+                              className="mr-1 inline-flex items-center gap-1 rounded border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 font-mono text-[10px] text-amber-400/90"
+                            >
+                              <Lock className="h-2.5 w-2.5" />
+                              Showcase
+                            </span>
+                          ) : null}
+
+                          <button
+                            onClick={() => handleCopy(item.id, item.content)}
+                            title="Copy"
+                            className="flex items-center gap-1 rounded-md border border-transparent px-2 py-1 text-[11px] text-zinc-400 transition hover:border-zinc-800 hover:bg-zinc-900 hover:text-zinc-200"
+                          >
+                            {copiedId === item.id ? (
+                              <>
+                                <Check className="h-3.5 w-3.5 text-emerald-400" />
+                                <span className="text-emerald-400">Copied</span>
+                              </>
+                            ) : (
+                              <Copy className="h-3.5 w-3.5" />
+                            )}
+                          </button>
+
+                          {!item.is_pinned && (
+                            <>
+                              <button
+                                onClick={() => startEdit(item)}
+                                title="Edit"
+                                className="rounded-md p-1.5 text-zinc-400 transition hover:bg-zinc-900 hover:text-zinc-200"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+
+                              <button
+                                onClick={() => handleDelete(item)}
+                                title="Delete"
+                                className="rounded-md p-1.5 text-zinc-400 transition hover:bg-zinc-900 hover:text-red-400"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </>
                           )}
                         </div>
 
